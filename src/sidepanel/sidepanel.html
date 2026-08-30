@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="sidepanel.css">
+<title>ReadDuck 摘要</title>
+</head>
+<body>
+<header>
+  <img src="../../icons/icon32.png" alt="" width="20" height="20">
+  <div class="grow">
+    <h1 class="truncate" id="pageTitle">—</h1>
+    <p class="small muted truncate" id="pageUrl"></p>
+  </div>
+  <button class="ghost" id="reload" title="重新讀取這個頁面">↻</button>
+</header>
+
+<div id="scroll">
+  <div id="notice" hidden></div>
+
+  <section class="card stack" id="summaryCard">
+    <div class="row between">
+      <h2>整頁摘要</h2>
+      <button id="summarize" class="primary">產生摘要</button>
+    </div>
+    <div id="summaryBody" class="stack">
+      <p class="small muted">按「產生摘要」讓裝置端模型讀完這一頁。全部在本機執行，內容不會離開這台電腦。</p>
+    </div>
+  </section>
+
+  <section class="stack" id="chat"></section>
+</div>
+
+<footer>
+  <div class="small muted row between" id="quota" hidden>
+    <span id="quotaText"></span>
+    <button class="ghost small" id="resetChat">重設對話</button>
+  </div>
+  <div class="row" style="gap:6px; align-items:flex-end">
+    <textarea id="question" rows="1" placeholder="針對這一頁提問…（Enter 送出）"></textarea>
+    <button class="primary" id="ask">問</button>
+  </div>
+</footer>
+
+<script type="module" src="sidepanel.js"></script>
+</body>
+</html>

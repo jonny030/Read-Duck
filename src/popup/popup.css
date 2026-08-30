@@ -1,0 +1,5 @@
+body { width: 306px; }
+main { padding: 12px; gap: 12px; }
+header img { border-radius: 6px; }
+#toggleCard { padding: 11px 12px; }
+select { min-width: 138px; }

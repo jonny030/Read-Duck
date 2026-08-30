@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="pdf.css">
+<title>ReadDuck PDF</title>
+</head>
+<body>
+<header>
+  <img src="../../icons/icon32.png" alt="" width="20" height="20">
+  <div class="grow">
+    <h1 class="truncate" id="docTitle">ReadDuck PDF 檢視器</h1>
+    <p class="small muted truncate" id="docStatus">尚未開啟檔案</p>
+  </div>
+
+  <div class="row" style="gap:4px">
+    <button class="ghost" id="zoomOut" title="縮小">−</button>
+    <span class="small muted" id="zoomLabel">100%</span>
+    <button class="ghost" id="zoomIn" title="放大">＋</button>
+  </div>
+  <button id="toggleMode" title="切換：譯文疊在原文上 / 左右對照">左右對照</button>
+  <button id="openFile">開啟本機檔案</button>
+  <button class="ghost" id="openNative" title="改用 Chrome 內建檢視器開啟" hidden>原生檢視器</button>
+  <input type="file" id="filePicker" accept="application/pdf,.pdf" hidden>
+</header>
+
+<div id="notice" hidden></div>
+
+<main id="pages">
+  <div id="dropzone">
+    <p><strong>把 PDF 拖進來，或按上方的「開啟本機檔案」</strong></p>
+    <p class="small muted">
+      翻譯在這台電腦上完成，檔案不會上傳到任何地方。<br>
+      左邊是原始頁面，右邊是譯文。
+    </p>
+  </div>
+</main>
+
+<script type="module" src="pdf-viewer.js"></script>
+</body>
+</html>

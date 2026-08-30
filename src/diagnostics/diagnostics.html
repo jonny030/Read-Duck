@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="diagnostics.css">
+<title>ReadDuck 內建 AI 診斷</title>
+</head>
+<body>
+<main>
+  <header class="row">
+    <img src="../../icons/icon48.png" alt="" width="34" height="34">
+    <div class="grow">
+      <h1 style="font-size:18px">內建 AI 診斷</h1>
+      <p class="small muted">確認這台裝置與這個 Chrome 版本能不能跑 ReadDuck。</p>
+    </div>
+    <button id="rerun">重新檢測</button>
+  </header>
+
+  <section class="card stack">
+    <h2>環境</h2>
+    <div class="kv" id="env"></div>
+  </section>
+
+  <section class="card stack">
+    <h2>各執行情境的 API 可用性</h2>
+    <p class="small muted">
+      內建 AI API 需要 responsible document 才能檢查 Permissions Policy，因此在
+      service worker（Worker 情境）不可用 —— 這是 ReadDuck 把所有 AI 呼叫放在
+      content script 與側邊欄的原因。下表是實測結果。
+    </p>
+    <div class="tablewrap"><table id="matrix"></table></div>
+  </section>
+
+  <section class="card stack">
+    <h2>模型狀態</h2>
+    <div class="kv" id="models"></div>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      <button class="primary" id="downloadTranslator">下載翻譯模型</button>
+      <button class="primary" id="downloadLm">下載語言模型</button>
+      <button id="openInternals">開啟 chrome://on-device-internals</button>
+    </div>
+    <div id="downloadStatus" class="small muted"></div>
+  </section>
+
+  <section class="card stack">
+    <h2>實際翻一句看看</h2>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      <input type="text" id="testInput" class="grow" value="Built-in AI runs entirely on your device.">
+      <select id="testTarget"></select>
+      <button class="primary" id="testRun">翻譯</button>
+    </div>
+    <div id="testOut" class="notice" hidden></div>
+  </section>
+
+  <section class="card stack">
+    <h2>原始資料</h2>
+    <p class="small muted">回報問題時請附上這一段。</p>
+    <pre class="mono" id="raw"></pre>
+    <div class="row"><button id="copyRaw">複製</button></div>
+  </section>
+</main>
+<script type="module" src="diagnostics.js"></script>
+</body>
+</html>

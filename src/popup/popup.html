@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="popup.css">
+<title>ReadDuck</title>
+</head>
+<body>
+<main class="stack">
+  <header class="row">
+    <img src="../../icons/icon48.png" alt="" width="26" height="26">
+    <div class="grow">
+      <h1>ReadDuck 讀鴨</h1>
+      <p class="small muted" id="host">—</p>
+    </div>
+    <button class="ghost" id="openOptions" title="設定">⚙</button>
+  </header>
+
+  <div class="card row between" id="toggleCard">
+    <div class="grow">
+      <div class="row" style="gap:6px">
+        <span class="dot" id="stateDot"></span>
+        <strong id="toggleLabel">雙語對照</strong>
+      </div>
+      <p class="small muted" id="stateText">尚未開始</p>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="toggle">
+      <span></span>
+    </label>
+  </div>
+
+  <div id="notice" hidden></div>
+
+  <div class="stack" style="gap:8px">
+    <label class="row between">
+      <span class="small">翻譯成</span>
+      <select id="targetLanguage"></select>
+    </label>
+    <label class="row between">
+      <span class="small">譯文樣式</span>
+      <select id="translationStyle">
+        <option value="underline">虛線底線</option>
+        <option value="background">淡色底</option>
+        <option value="blur">模糊（滑過顯示）</option>
+        <option value="plain">無樣式</option>
+      </select>
+    </label>
+    <label class="row between" id="autoRow">
+      <span class="small truncate">在這個網站自動翻譯</span>
+      <label class="switch"><input type="checkbox" id="autoDomain"><span></span></label>
+    </label>
+  </div>
+
+  <hr class="divider">
+
+  <div class="row" style="gap:6px; flex-wrap:wrap">
+    <button id="sidePanel">摘要側欄</button>
+    <button id="pdf">PDF</button>
+    <button id="diagnostics">診斷</button>
+  </div>
+</main>
+<script type="module" src="popup.js"></script>
+</body>
+</html>

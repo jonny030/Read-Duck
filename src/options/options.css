@@ -1,0 +1,19 @@
+main { max-width: 680px; margin: 0 auto; padding: 26px 20px 40px; display: flex; flex-direction: column; gap: 14px; }
+header img { border-radius: 8px; }
+section label.row > div:first-child { min-width: 0; }
+select { min-width: 160px; }
+input[type="range"] { width: 160px; }
+textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+
+.preview { border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px; background: var(--bg); }
+.preview p { margin: 0; line-height: 1.7; }
+.preview .tr { margin-top: .35em; }
+.preview[data-style="underline"] .tr span {
+  text-decoration: underline dotted rgba(245,158,11,.85);
+  text-underline-offset: 3px;
+}
+.preview[data-style="background"] .tr span { background: var(--accent-soft); border-radius: 3px; padding: 0 2px; }
+.preview[data-style="blur"] .tr span { filter: blur(4px); transition: filter .15s ease; }
+.preview[data-style="blur"]:hover .tr span { filter: none; }
+
+#saved { min-height: 1.4em; text-align: right; transition: opacity .25s ease; }

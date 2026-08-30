@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "ReadDuck"
+  },
+  "extDesc": {
+    "message": "Bilingual inline translation, selection explain and page summary powered by Chrome's on-device AI. No API key, nothing leaves your machine."
+  }
+}

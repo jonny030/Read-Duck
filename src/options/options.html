@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="../shared.css">
+<link rel="stylesheet" href="options.css">
+<title>ReadDuck 設定</title>
+</head>
+<body>
+<main>
+  <header class="row">
+    <img src="../../icons/icon48.png" alt="" width="34" height="34">
+    <div class="grow">
+      <h1 style="font-size:18px">ReadDuck 設定</h1>
+      <p class="small muted">全部在本機執行，不需要 API key，內容不會離開這台電腦。</p>
+    </div>
+  </header>
+
+  <section class="card stack">
+    <h2>語言</h2>
+    <label class="row between">
+      <div><div>閱讀時翻譯成</div><div class="small muted">網頁雙語對照與劃選翻譯使用</div></div>
+      <select id="targetLanguage"></select>
+    </label>
+    <hr class="divider">
+    <label class="row between">
+      <div><div>輸入框翻譯成</div><div class="small muted">在輸入框按右鍵可把你打的字改寫成這個語言</div></div>
+      <select id="inputTargetLanguage"></select>
+    </label>
+  </section>
+
+  <section class="card stack">
+    <h2>譯文外觀</h2>
+    <label class="row between">
+      <span>樣式</span>
+      <select id="translationStyle">
+        <option value="underline">虛線底線</option>
+        <option value="background">淡色底</option>
+        <option value="blur">模糊（滑過顯示）</option>
+        <option value="plain">無樣式</option>
+      </select>
+    </label>
+    <label class="row between">
+      <div><div>字級</div><div class="small muted">相對於原文，<span id="scaleLabel">100%</span></div></div>
+      <input type="range" id="translationFontScale" min="0.7" max="1.3" step="0.05">
+    </label>
+    <div class="preview" id="preview">
+      <p>The quick brown fox jumps over the lazy dog.</p>
+      <p class="tr"><span>敏捷的棕色狐狸跳過了那隻懶狗。</span></p>
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2>行為</h2>
+    <label class="row between">
+      <div><div>頁面右下角浮動按鈕</div><div class="small muted">一鍵切換雙語對照</div></div>
+      <label class="switch"><input type="checkbox" id="showFloatingButton"><span></span></label>
+    </label>
+    <label class="row between">
+      <div><div>劃選工具列</div><div class="small muted">選取文字後浮出「譯 / 解釋 / 簡化」</div></div>
+      <label class="switch"><input type="checkbox" id="showSelectionToolbar"><span></span></label>
+    </label>
+    <label class="row between">
+      <div><div>同時翻譯的段落數</div><div class="small muted">內建 API 會自行排隊，調高不一定更快（<span id="concurrencyLabel">3</span>）</div></div>
+      <input type="range" id="concurrency" min="1" max="8" step="1">
+    </label>
+    <label class="row between">
+      <div><div>最短翻譯長度</div><div class="small muted">短於這個字數的片段不翻（<span id="minLenLabel">4</span> 字）</div></div>
+      <input type="range" id="minTextLength" min="1" max="20" step="1">
+    </label>
+  </section>
+
+  <section class="card stack">
+    <h2>網域規則</h2>
+    <label class="stack" style="gap:5px">
+      <div><div>自動翻譯</div><div class="small muted">一開啟這些網站就自動雙語對照，一行一個網域</div></div>
+      <textarea id="autoTranslateDomains" placeholder="news.ycombinator.com&#10;arxiv.org"></textarea>
+    </label>
+    <label class="stack" style="gap:5px">
+      <div><div>完全停用</div><div class="small muted">ReadDuck 不會在這些網站載入</div></div>
+      <textarea id="neverTranslateDomains" placeholder="mail.google.com"></textarea>
+    </label>
+  </section>
+
+  <section class="card stack">
+    <h2>譯文快取</h2>
+    <label class="row between">
+      <div><div>啟用快取</div><div class="small muted">同一段文字只翻一次，重訪頁面立即顯示</div></div>
+      <label class="switch"><input type="checkbox" id="cacheEnabled"><span></span></label>
+    </label>
+    <div class="row between">
+      <p class="small muted" id="cacheStats">統計中…</p>
+      <button class="danger" id="clearCache">清除快取</button>
+    </div>
+  </section>
+
+  <section class="card stack">
+    <h2>其他</h2>
+    <div class="row" style="gap:8px; flex-wrap:wrap">
+      <button id="diagnostics">內建 AI 診斷</button>
+      <button class="danger" id="reset">回復預設值</button>
+    </div>
+  </section>
+
+  <p class="small muted" id="saved">&nbsp;</p>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>
