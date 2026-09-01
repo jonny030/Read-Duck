@@ -1,4 +1,4 @@
-import { normalizeAvailability, describeError } from './capability.js';
+import { normalizeAvailability, describeError, isModelCrashError } from './capability.js';
 import { canonical } from './languages.js';
 import { currentBrowser, BROWSER_PROFILES } from '../lib/browser.js';
 
@@ -196,6 +196,42 @@ export async function createSession({
   return session;
 }
 
+/**
+ * 從基底 session 分出一個獨立的分支。
+ *
+ * 為什麼需要分支：一次性的提問不該污染長期 session 的上下文，否則下一次的
+ * 回答會被上一次的內容影響，上下文也會愈積愈滿。
+ *
+ * 首選 clone() —— 它便宜，system prompt 與參數都不必重新處理。但 Edge 的
+ * Prompt API 實作不支援 cloning，會回 InvalidStateError「The session cannot
+ * be cloned.」。這種情況改成用同一份設定重新建一個 session：語意完全一樣，
+ * 只是貴一點。
+ *
+ * @param {object} base 基底 session
+ * @param {object} config 當初建立 base 用的設定，降級時要靠它重建
+ */
+let cloneUnsupported = false;
+
+export async function forkSession(base, config, { signal } = {}) {
+  if (!cloneUnsupported) {
+    try {
+      return await base.clone({ signal });
+    } catch (err) {
+      // 只有「不支援 cloning」才降級。其他錯誤（取消、模型崩潰）要原樣拋出，
+      // 否則會把真正的問題掩蓋成一次多餘的 session 建立。
+      if (err?.name !== 'InvalidStateError') throw err;
+      cloneUnsupported = true;
+      console.warn('[ReadDuck] 這個瀏覽器不支援 session cloning，改為每次重建：', describeError(err));
+    }
+  }
+  return createSession({ ...config, signal });
+}
+
+/** 重置上面那個記憶。給測試用。 */
+export function resetCloneSupport() {
+  cloneUnsupported = false;
+}
+
 /** 串流提問。onChunk 收到的是「累積到目前為止的完整文字」。 */
 export async function promptStream(session, input, { signal, onChunk } = {}) {
   const stream = session.promptStreaming(input, { signal });
@@ -207,18 +243,77 @@ export async function promptStream(session, input, { signal, onChunk } = {}) {
   return acc;
 }
 
-/** 結構化輸出。回傳已 parse 的物件。 */
+/**
+ * 約束解碼在這個執行環境到底能不能用。
+ *
+ * 兩道關卡：瀏覽器本身支不支援（Edge 的 Phi-4-mini 會崩，見 lib/browser.js），
+ * 以及這個 session 期間有沒有實際失敗過。失敗過一次就不再試 —— 失敗的代價
+ * 可能是一次模型行程崩潰，而崩潰次數是有斷路器在數的。
+ */
+let constrainedOutputFailed = false;
+
+function canConstrainOutput() {
+  return currentBrowser().supportsResponseConstraint && !constrainedOutputFailed;
+}
+
+/** 重置上面那個記憶。給測試用。 */
+export function resetConstrainedOutputState() {
+  constrainedOutputFailed = false;
+}
+
+/**
+ * 結構化輸出。回傳已 parse 的物件。
+ *
+ * 能用約束解碼就用 —— 那是最可靠的做法，模型在生成過程中就不可能吐出不合
+ * schema 的東西。不能用（或試過會壞）的時候，改把 schema 寫進 prompt 文字，
+ * 結果一樣要通過 JSON.parse 才算數。
+ *
+ * 這個降級和輸出語言那條規則不同，不衝突：拿掉 responseConstraint 只是少了
+ * 生成期的保證，輸出仍然要能 parse 成物件；拿掉輸出語言則會讓模型產出品質與
+ * 安全性都不受保證的內容，那是不能退的。
+ */
 export async function promptJson(session, input, schema, { signal } = {}) {
-  const raw = await session.prompt(input, {
-    responseConstraint: schema,
-    // schema 本身不必送進模型的上下文，省 token
-    omitResponseConstraintInput: true,
-    signal,
-  });
+  if (!canConstrainOutput()) {
+    return parseJsonOutput(await session.prompt(withSchemaInPrompt(input, schema), { signal }));
+  }
+
+  let raw;
+  try {
+    raw = await session.prompt(input, {
+      responseConstraint: schema,
+      // schema 本身不必送進模型的上下文，省 token
+      omitResponseConstraintInput: true,
+      signal,
+    });
+  } catch (err) {
+    // 使用者取消、輸入本來就超長，重試都沒有意義
+    if (err?.name === 'AbortError' || isQuotaError(err)) throw err;
+    // 模型行程崩潰時更要停手：斷路器在數次數，多送一次只會讓整個模型版本
+    // 更快被停用，代價遠大於「這次也許會成功」
+    constrainedOutputFailed = true;
+    if (isModelCrashError(err)) throw err;
+    console.warn('[ReadDuck] 結構化輸出失敗，本次工作階段改用純文字要求 JSON：', describeError(err));
+    raw = await session.prompt(withSchemaInPrompt(input, schema), { signal });
+  }
+  return parseJsonOutput(raw);
+}
+
+/** 降級路線：約束解碼不可用時，改用文字指示要求模型自己遵守 schema。 */
+function withSchemaInPrompt(input, schema) {
+  return [
+    input,
+    '',
+    'Reply with a single JSON object matching this schema.',
+    'Output only the JSON — no code fence, no commentary before or after.',
+    JSON.stringify(schema),
+  ].join('\n');
+}
+
+function parseJsonOutput(raw) {
   try {
     return JSON.parse(raw);
   } catch {
-    // 極少數情況模型會把 JSON 包在 ``` 裡
+    // 沒有約束解碼護著的時候，模型很常把 JSON 包在 ``` 裡
     const m = raw.match(/\{[\s\S]*\}/);
     if (m) return JSON.parse(m[0]);
     throw new Error('模型輸出不是合法 JSON');

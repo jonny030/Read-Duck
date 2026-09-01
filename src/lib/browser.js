@@ -27,6 +27,7 @@ const CHROME = Object.freeze({
   internalsUrl: 'chrome://on-device-internals',
   flagsUrl: 'chrome://flags',
   extensionsUrl: 'chrome://extensions',
+  crashesUrl: 'chrome://crashes',
   /** Translator / LanguageDetector 可用的最低版本 */
   minVersion: 138,
   /** Prompt API 可用的最低版本 */
@@ -36,6 +37,10 @@ const CHROME = Object.freeze({
   promptNeedsFlag: false,
   promptFlag: null,
   promptNote: null,
+  /** 模型行程一直崩潰時，有沒有「換一個不吃 GPU 的模型」這條路 */
+  cpuFallbackHint: null,
+  /** responseConstraint（約束解碼）能不能用 —— 見 EDGE 那邊的說明 */
+  supportsResponseConstraint: true,
   promptOutputLanguages: CHROME_OUTPUT_LANGUAGES,
   requirements: Object.freeze([
     'Chrome 138 以上（桌機版，行動版不支援）',
@@ -52,6 +57,9 @@ const EDGE = Object.freeze({
   internalsUrl: 'edge://on-device-internals',
   flagsUrl: 'edge://flags',
   extensionsUrl: 'edge://extensions',
+  // 崩潰訊息是 Chromium 直接透出來的，裡面寫的是 chrome://crashes ——
+  // 在 Edge 上那個網址打不開，要導向 edge://crashes。
+  crashesUrl: 'edge://crashes',
   minVersion: 148,
   promptMinVersion: 138,
   promptModel: 'Phi-4-mini',
@@ -61,6 +69,23 @@ const EDGE = Object.freeze({
     'edge://on-device-internals 的「裝置效能類別」是「中」或「低」時 Phi-4-mini 不會啟用，'
     + '可改用 Edge 150.0.4070 以上、並啟用「Enable pre-release on-device language model」'
     + '的 Aion-1.0-Instruct。',
+  cpuFallbackHint:
+    'edge://on-device-internals 的 Backend Type 是 GPU 的話，可改用走 CPU 推論的 '
+    + 'Aion-1.0-Instruct（需 Edge 150.0.4070 以上，在 edge://flags 啟用 '
+    + '「Enable pre-release on-device language model」）',
+  /**
+   * Edge 上不要用 responseConstraint。
+   *
+   * Microsoft 的文件是有寫這個選項（範例是扁平的物件），但實測 Phi-4-mini 遇到
+   * ReadDuck 的摘要 schema（巢狀的物件陣列）時，**模型行程會直接崩潰** ——
+   * 表面上只看到 kErrorUnknown，edge://crashes 裡才看得到真正發生了什麼。
+   *
+   * 這比「功能失敗」嚴重得多：Chromium 對模型行程的重複崩潰有斷路器，累積到
+   * 閾值就會把整個模型版本停用，連翻譯以外的所有 AI 功能都一起沒了。所以
+   * 這裡不做「試試看、失敗再降級」—— 每試一次的代價是一次崩潰，太貴了。
+   * 直接走把 schema 寫進 prompt 的路線，結果一樣要通過 JSON.parse 才算數。
+   */
+  supportsResponseConstraint: false,
   /**
    * 只讓模型輸出英文。
    *

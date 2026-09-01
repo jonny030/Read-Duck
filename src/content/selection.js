@@ -2,13 +2,13 @@ import * as ui from './ui.js';
 import { translateText, NeedsUserActivationError, TranslatorUnavailableError } from '../ai/translator-pool.js';
 import { detectLanguage, MIN_DETECT_LENGTH } from '../ai/detector.js';
 import {
-  createSession, planOutputLanguage, isLanguageModelPresent,
+  createSession, forkSession, planOutputLanguage, isLanguageModelPresent,
   checkAvailability as checkLmAvailability,
   needsDownloadConsent, DOWNLOAD_NOTICE,
 } from '../ai/language-model.js';
 import { promptLocalized } from '../ai/localize.js';
 import { explainSystemPrompt, simplifySystemPrompt } from '../ai/prompts.js';
-import { explainUnavailable } from '../ai/capability.js';
+import { explainUnavailable, explainModelError } from '../ai/capability.js';
 import { currentBrowser } from '../lib/browser.js';
 import { sameLanguage, languageName } from '../ai/languages.js';
 import { mightAlreadyBe } from './script-detect.js';
@@ -262,15 +262,17 @@ async function runPrompt(action, text, panel, signal) {
 
 /** 取得基底 session 的分支。基底只建立一次，之後每次操作 clone。 */
 async function getBranch(action, plan, panel, signal) {
-  if (!baseSessions.has(action)) {
-    const systemPrompt = action === 'explain'
+  const config = {
+    systemPrompt: action === 'explain'
       ? explainSystemPrompt(plan.modelLanguage)
-      : simplifySystemPrompt(plan.modelLanguage);
+      : simplifySystemPrompt(plan.modelLanguage),
+    mode: action === 'explain' ? 'balanced' : 'precise',
+    outputLanguage: plan.modelLanguage,
+  };
 
+  if (!baseSessions.has(action)) {
     baseSessions.set(action, createSession({
-      systemPrompt,
-      mode: action === 'explain' ? 'balanced' : 'precise',
-      outputLanguage: plan.modelLanguage,
+      ...config,
       onDownloadProgress: (loaded) => {
         panel.setStatus(`正在下載裝置端語言模型（只需下載一次）… ${Math.round(loaded * 100)}%`);
       },
@@ -280,7 +282,8 @@ async function getBranch(action, plan, panel, signal) {
     }));
   }
   const base = await baseSessions.get(action);
-  return base.clone({ signal });
+  // 不支援 cloning 的瀏覽器（Edge）會退回用同一份設定重建
+  return forkSession(base, config, { signal });
 }
 
 function describeFailure(err) {
@@ -296,5 +299,7 @@ function describeFailure(err) {
   if (err?.name === 'NotSupportedError') {
     return '模型不支援這個語言或輸入類型。';
   }
-  return `發生錯誤：${err?.message || err}`;
+  // 模型服務直接透出來的錯誤碼（崩潰、kErrorUnknown）要另外解釋，
+  // 原樣顯示對使用者沒有任何幫助
+  return `發生錯誤：${explainModelError(err)}`;
 }

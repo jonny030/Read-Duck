@@ -1,6 +1,6 @@
 import * as ui from './ui.js';
 import {
-  createSession, promptStream, promptOutputLanguages,
+  createSession, forkSession, promptStream, promptOutputLanguages,
   needsDownloadConsent, DOWNLOAD_NOTICE,
 } from '../ai/language-model.js';
 import { translateText } from '../ai/translator-pool.js';
@@ -67,6 +67,15 @@ export async function translateFocusedInput() {
   }
 }
 
+/** 建 session 與重建分支共用同一份設定。 */
+function sessionConfig(target) {
+  return {
+    systemPrompt: inputRewriteSystemPrompt(target),
+    mode: 'balanced',
+    outputLanguage: target,
+  };
+}
+
 /** Prompt API 路線：追求道地的表達，而不是字面翻譯。 */
 async function rewriteWithModel(original, target, toast) {
   if (!session) {
@@ -78,14 +87,12 @@ async function rewriteWithModel(original, target, toast) {
       toast = ui.showToast(`改寫成${languageName(target)}…`, { timeout: 0 });
     }
     session = await createSession({
-      systemPrompt: inputRewriteSystemPrompt(target),
-      mode: 'balanced',
-      outputLanguage: target,
+      ...sessionConfig(target),
       onDownloadProgress: (l) => toast.update(`正在下載裝置端語言模型（只需下載一次）… ${Math.round(l * 100)}%`),
     });
   }
-  // 用 clone 跑，主 session 不會累積上下文（否則下一句會被上一句影響）
-  const branch = await session.clone();
+  // 用分支跑，主 session 不會累積上下文（否則下一句會被上一句影響）
+  const branch = await forkSession(session, sessionConfig(target));
   try {
     const out = await promptStream(branch, original, {
       onChunk: (p) => toast.update(p.length > 120 ? p.slice(-120) : p),

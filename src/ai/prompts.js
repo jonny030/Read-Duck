@@ -79,7 +79,15 @@ export function inputRewriteSystemPrompt(outputLanguage) {
   ].join('\n');
 }
 
-/** 摘要的結構化輸出 schema。搭配 omitResponseConstraintInput: true 使用。 */
+/**
+ * 摘要的結構化輸出 schema。搭配 omitResponseConstraintInput: true 使用。
+ *
+ * 刻意只用最保守的 JSON Schema 子集：type / properties / items / required /
+ * additionalProperties。陣列長度限制（minItems / maxItems）已經拿掉 ——
+ * 它要靠約束解碼在生成過程中計數，是各家實作差異最大的地方，Edge 的
+ * Phi-4-mini 上會讓整個請求以 kErrorUnknown 失敗。條數的要求本來就寫在
+ * summarySystemPrompt() 裡（3 to 6 key points），沒有它並不會少一道把關。
+ */
 export const SUMMARY_SCHEMA = {
   type: 'object',
   properties: {
@@ -87,12 +95,9 @@ export const SUMMARY_SCHEMA = {
     bullets: {
       type: 'array',
       items: { type: 'string' },
-      minItems: 3,
-      maxItems: 6,
     },
     terms: {
       type: 'array',
-      maxItems: 5,
       items: {
         type: 'object',
         properties: {

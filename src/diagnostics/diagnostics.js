@@ -1,5 +1,5 @@
 import { MSG, send, sendToTab } from '../lib/messaging.js';
-import { probe, API_NAMES, explainUnavailable } from '../ai/capability.js';
+import { probe, API_NAMES, explainUnavailable, explainModelError } from '../ai/capability.js';
 import { getSettings } from '../lib/settings.js';
 import { SUPPORTED_LANGUAGES, languageName } from '../ai/languages.js';
 import { translateText, checkAvailability } from '../ai/translator-pool.js';
@@ -210,7 +210,7 @@ async function downloadTranslator() {
     status.textContent = '翻譯模型已就緒。';
     await runAll();
   } catch (err) {
-    status.textContent = `下載失敗：${err?.name} ${err?.message}`;
+    status.textContent = `下載失敗：${explainModelError(err)}`;
   }
 }
 
@@ -240,7 +240,7 @@ async function downloadLanguageModel() {
     status.textContent = '語言模型已就緒。';
     await runAll();
   } catch (err) {
-    status.textContent = `下載失敗：${err?.name} ${err?.message}`;
+    status.textContent = `下載失敗：${explainModelError(err)}`;
   }
 }
 
@@ -270,7 +270,7 @@ async function runTest() {
     out.textContent = `${result}\n\n（耗時 ${ms} ms）`;
   } catch (err) {
     out.className = 'notice err';
-    out.textContent = `失敗：${err?.name}: ${err?.message}`;
+    out.textContent = `失敗：${explainModelError(err)}`;
   }
 }
 

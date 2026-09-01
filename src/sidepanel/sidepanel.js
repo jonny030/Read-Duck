@@ -9,7 +9,9 @@ import { promptLocalized, localizeText, localizeAll } from '../ai/localize.js';
 import {
   summarySystemPrompt, chunkSummarySystemPrompt, qaSystemPrompt, SUMMARY_SCHEMA,
 } from '../ai/prompts.js';
-import { explainUnavailable } from '../ai/capability.js';
+import {
+  explainUnavailable, explainModelError, isModelCrashError, describeError,
+} from '../ai/capability.js';
 
 /**
  * 側邊欄：整頁摘要 + 針對本頁的問答。
@@ -367,33 +369,52 @@ async function mapReduce(text, budget, plan, signal, onProgress) {
   const chunks = chunkText(text, Math.floor(budget * 0.8));
   // 分段摘要是中繼結果，不轉譯 —— 它會再餵回模型做最終摘要，
   // 保持在模型的原生輸出語言比較準，也省掉一輪翻譯。
-  const s = await createSession({
+  // 分支降級時要靠同一份設定重建，所以先留著
+  const config = {
     systemPrompt: chunkSummarySystemPrompt(plan.modelLanguage),
     mode: 'precise',
     outputLanguage: plan.modelLanguage,
-    signal,
-  });
+  };
+  const s = await createSession({ ...config, signal });
 
   const parts = [];
-  for (let i = 0; i < chunks.length; i++) {
-    onProgress(i + 1, chunks.length);
-    // 每段用 clone 跑，避免前一段的內容影響下一段
-    const branch = await s.clone({ signal });
-    try {
-      parts.push(await branch.prompt(chunks[i], { signal }));
-    } catch (err) {
-      if (isQuotaError(err)) {
-        console.warn('[ReadDuck] 分段仍然過長，略過這一段', err);
-      } else if (err?.name === 'AbortError') {
-        throw err;
-      } else {
-        console.warn('[ReadDuck] 分段摘要失敗', err);
+  let lastError = null;
+
+  try {
+    for (let i = 0; i < chunks.length; i++) {
+      onProgress(i + 1, chunks.length);
+      // 每段用 clone 跑，避免前一段的內容影響下一段
+      const branch = await forkSession(s, config, { signal });
+      try {
+        parts.push(await branch.prompt(chunks[i], { signal }));
+      } catch (err) {
+        lastError = err;
+        if (err?.name === 'AbortError') throw err;
+        // 模型行程崩潰時立刻停手。每一段都試一次就是崩潰一次，而瀏覽器對
+        // 重複崩潰的容忍度只有個位數 —— 一篇長文足以在單次摘要裡就把整個
+        // 模型版本弄成停用狀態。這裡少做幾段，換的是後面所有 AI 功能還活著。
+        if (isModelCrashError(err)) throw err;
+        // err 直接丟給 console 會被序列化成 [object DOMException]，
+        // name 和 message 全部看不到，等於沒有記錄
+        console.warn(
+          isQuotaError(err) ? '[ReadDuck] 分段仍然過長，略過這一段：' : '[ReadDuck] 分段摘要失敗：',
+          describeError(err),
+        );
+      } finally {
+        branch.destroy?.();
       }
-    } finally {
-      branch.destroy?.();
     }
+  } finally {
+    // 取消或中途拋錯時也要放掉基底 session，否則模型會一直留在記憶體裡
+    s.destroy?.();
   }
-  s.destroy?.();
+
+  // 全部失敗時不能回空字串 —— 那會讓模型去摘要一篇沒有內容的文章，
+  // 使用者拿到一段憑空捏造的摘要，卻不知道中間全錯了
+  if (!parts.length) {
+    throw lastError ?? new Error('文章分段後每一段都摘要失敗，沒有可用的內容。');
+  }
+
   return parts.join('\n\n');
 }
 
@@ -451,7 +472,7 @@ function showSummaryError(err) {
     showNotice('err', `這篇文章超出模型的上下文長度（需要 ${err.requested}，上限 ${err.contextWindow}）。`);
     return;
   }
-  showNotice('err', `摘要失敗：${err?.message || err}`);
+  showNotice('err', `摘要失敗：${explainModelError(err)}`);
 }
 
 /* ------------------------------------------------------------ 問答 */

@@ -141,10 +141,63 @@ export function explainUnavailable(availability, apiName = 'AI') {
           `ReadDuck 需要${browser.name}內建的裝置端模型，請確認：`,
           ...browser.requirements.map((r) => `• ${r}`),
           ...(browser.promptNote ? ['', browser.promptNote] : []),
+          // availability() 只會回 unavailable，分不出「機器不夠力」和
+          // 「模型因重複崩潰被瀏覽器停用」。後者的硬體條件全部符合，
+          // 卻只會看到上面那串需求 —— 不提這件事會讓人一直找錯方向。
+          '',
+          `硬體條件都符合卻仍顯示不可用時，請到 ${browser.internalsUrl} 查看 `
+          + 'Model crash count：current 超過 maximum 代表模型因重複崩潰被停用了，'
+          + '那不是這台裝置的問題，要等模型版本更新或改用其他模型才會解除。',
         ].join('\n'),
         actions: [{ label: '檢視模型狀態', kind: 'open', url: browser.internalsUrl }],
       };
   }
+}
+
+/**
+ * 模型服務直接吐出來的錯誤對使用者毫無意義（kErrorUnknown 那類），
+ * 這裡把它轉成「這是瀏覽器回報的，不是你做錯什麼」加上可行動的下一步。
+ */
+
+/**
+ * 模型行程重複崩潰後，瀏覽器會對這個模型版本整個停用（斷路器）。
+ * 這不是我們送錯東西，重試也沒有用 —— 必須讓模型版本更新或重新下載才會解除。
+ */
+const MODEL_CRASHED = /crashed too many times|model process crashed/i;
+
+/** 模型服務直接透出來、沒有語意的內部錯誤碼。 */
+const OPAQUE_MODEL_ERROR = /\bkError|unknown error occurred/i;
+
+/** 這個錯誤是不是「模型已被停用」？是的話重試只會讓情況更糟。 */
+export function isModelCrashError(err) {
+  return MODEL_CRASHED.test(describeError(err));
+}
+
+export function explainModelError(err) {
+  const raw = describeError(err);
+  const browser = currentBrowser();
+
+  if (MODEL_CRASHED.test(raw)) {
+    return [
+      `${browser.name}的裝置端模型行程重複崩潰，已被瀏覽器停用。`,
+      '這是模型本身在這台機器上跑不起來，不是這一次的操作有問題，重試不會有效果。',
+      '',
+      '可以試的方向：',
+      `• 到 ${browser.crashesUrl} 看崩潰記錄`,
+      ...(browser.cpuFallbackHint ? [`• ${browser.cpuFallbackHint}`] : []),
+      `• 完全結束${browser.name}後，刪掉已下載的模型資料夾強制重新下載`,
+      `  （路徑在 ${browser.internalsUrl} 的 File path 欄位）`,
+    ].join('\n');
+  }
+
+  if (!OPAQUE_MODEL_ERROR.test(raw)) return raw;
+
+  return [
+    `裝置端模型執行失敗（${raw}）。`,
+    `這個錯誤碼由${browser.name}的模型服務直接回報，沒有附帶進一步的說明。`,
+    `可以到 ${browser.internalsUrl} 確認模型狀態；剛下載完模型的話，`,
+    `重新啟動${browser.name}後再試一次。`,
+  ].join('');
 }
 
 /**
