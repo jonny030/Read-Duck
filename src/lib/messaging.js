@@ -41,7 +41,6 @@ export const MSG = {
  * runtime 訊息是廣播給所有擴充功能情境的，沒有標記就分不出「檢視器答的」
  * 和「別的地方剛好回了些什麼」。
  */
-export const PDF_VIEWER_SOURCE = 'pdf-viewer';
 
 export function send(type, payload) {
   return new Promise((resolve) => {

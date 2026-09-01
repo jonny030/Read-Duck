@@ -10,7 +10,7 @@ import { sameLanguage, canonical, languageName } from '../ai/languages.js';
 import { TaskQueue, isAbort } from '../ai/queue.js';
 import { explainUnavailable } from '../ai/capability.js';
 import { cacheKey } from '../lib/hash.js';
-import { MSG, send, PDF_VIEWER_SOURCE } from '../lib/messaging.js';
+import { MSG, send } from '../lib/messaging.js';
 import * as ui from '../content/ui.js';
 
 /**
@@ -50,13 +50,6 @@ let sourceUrl = null;
 const rows = new Map();
 let stats = { total: 0, done: 0 };
 let warned = new Set();
-/** 這個檢視器所在的分頁。側邊欄靠它認出該由誰回答抽取請求 */
-let myTabId = null;
-/** 整份文件的純文字，供側邊欄摘要用。抽一次就留著 */
-let documentText = null;
-
-/** 摘要最多讀這麼多頁。整本書全抽會讓側邊欄等太久 */
-const MAX_SUMMARY_PAGES = 60;
 
 init().catch((err) => showNotice('err', `初始化失敗：${err.message}`));
 
@@ -66,7 +59,6 @@ async function init() {
   setMode(mode);
   bindUi();
 
-  listenForSidePanel();
   if (settings.showFloatingButton) mountFab();
 
   const file = new URLSearchParams(location.search).get('file');
@@ -157,85 +149,18 @@ async function load(data, name) {
  * 這裡是擴充功能頁面，沒有 content script，所以要自己掛。ui.js 不依賴任何
  * chrome.* API，可以直接重用。
  *
- * 側邊欄與設定頁都由本頁直接呼叫對應的 API，不繞 service worker ——
- * sidePanel.open() 需要使用者手勢，訊息往返會讓 activation 過期。
+ * 設定頁由本頁直接呼叫 openOptionsPage()，不繞 service worker。
  */
 function mountFab() {
   ui.showFab({
     title: 'ReadDuck：切換譯文顯示方式',
     // 一般網頁上鴨子是開關翻譯，PDF 一定會翻，所以改成切換呈現方式
     onClick: () => setMode(mode === 'overlay' ? 'side-by-side' : 'overlay'),
-    onSummary: openSummaryPanel,
     onOptions: () => chrome.runtime.openOptionsPage(),
   });
 }
 
-function openSummaryPanel() {
-  if (myTabId == null) {
-    ui.showToast('還不知道這個分頁的編號，請稍候再試。', { timeout: 3000 });
-    return;
-  }
-  // 不能先 await 任何東西，否則使用者手勢會過期
-  chrome.sidePanel.open({ tabId: myTabId }).catch((err) => {
-    ui.showToast(`無法開啟側邊欄：${err?.message || err}`, { timeout: 5000 });
-  });
-}
-
-/**
- * 回應側邊欄的正文抽取請求。
- *
- * 這裡是擴充功能頁面，不是一般網頁，所以 content script 不會注入 ——
- * 側邊欄的 chrome.tabs.sendMessage 找不到接收者。改由檢視器自己註冊
- * runtime 訊息監聽，並用分頁 ID 認出是不是在問自己。
- */
-function listenForSidePanel() {
-  Promise.resolve(chrome.tabs?.getCurrent?.())
-    .then((tab) => { myTabId = tab?.id ?? null; })
-    .catch(() => {});
-
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg?.type !== MSG.EXTRACT_ARTICLE) return false;
-    // 每個擴充功能頁面都會收到這則訊息，只有目標分頁該回答
-    if (myTabId == null || msg.payload?.tabId !== myTabId) return false;
-
-    // 一律帶上標記，側邊欄才分得出這是檢視器答的
-    extractDocumentText()
-      .then((r) => sendResponse({ source: PDF_VIEWER_SOURCE, ...(r ?? {}) }))
-      .catch(() => sendResponse({ source: PDF_VIEWER_SOURCE }));
-    return true;
-  });
-}
-
-/** 把整份文件的文字抽出來（頁面渲染是延遲的，這裡不依賴它）。 */
-async function extractDocumentText() {
-  // 還在解析：回報 pending 讓側邊欄稍後再問，而不是讓它以為這份 PDF 沒有文字
-  if (!doc) return { pending: true };
-  if (documentText) return documentText;
-
-  const limit = Math.min(doc.numPages, MAX_SUMMARY_PAGES);
-  const parts = [];
-  for (let n = 1; n <= limit; n++) {
-    const page = await doc.getPage(n);
-    const viewport = page.getViewport({ scale: 1 });
-    const content = await page.getTextContent();
-    for (const p of groupParagraphs(content.items, viewport.width)) {
-      if (p.text.trim().length >= 12) parts.push(p.text);
-    }
-  }
-  if (!parts.length) return null;
-
-  const truncated = doc.numPages > limit;
-  documentText = {
-    title: $('docTitle').textContent,
-    url: sourceUrl ?? location.href,
-    text: parts.join('\n\n')
-      + (truncated ? `\n\n（這份文件有 ${doc.numPages} 頁，摘要只讀了前 ${limit} 頁）` : ''),
-  };
-  return documentText;
-}
-
 function reset() {
-  documentText = null;
   observer?.disconnect();
   observer = null;
   queue.clear();

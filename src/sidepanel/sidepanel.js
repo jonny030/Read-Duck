@@ -1,7 +1,7 @@
-import { MSG, send, sendToTab, PDF_VIEWER_SOURCE } from '../lib/messaging.js';
+import { MSG, sendToTab } from '../lib/messaging.js';
 import { getSettings } from '../lib/settings.js';
 import {
-  createSession, planOutputLanguage, promptJson, usage,
+  createSession, forkSession, planOutputLanguage, promptJson, usage,
   estimateTokens, chunkText, isLanguageModelPresent, checkAvailability, isQuotaError,
   needsDownloadConsent, DOWNLOAD_NOTICE,
 } from '../ai/language-model.js';
@@ -81,33 +81,26 @@ async function loadArticle() {
   $('pageTitle').textContent = tab.title || '—';
   $('pageUrl').textContent = tab.url || '';
 
-  // 先問那個分頁裡有沒有 ReadDuck 的 PDF 檢視器（它是擴充功能頁面，上面沒有
-  // content script，只能用 runtime 訊息問）。
-  //
-  // 這裡刻意**不**靠 tab.url 判斷：tabs.query() 只有在擴充功能具備 tabs 權限、
-  // 或 host permissions 涵蓋該網址時才會回傳 url，而 <all_urls> 並不涵蓋
-  // chrome-extension://。也就是說我們自己的檢視器分頁，tab.url 是 undefined。
-  const viewer = await extractFromViewer(tab.id);
-  const isPdfViewer = viewer.answered;
-  const res = isPdfViewer ? viewer.article : await sendToTab(tab.id, MSG.EXTRACT_ARTICLE);
+  const res = await sendToTab(tab.id, MSG.EXTRACT_ARTICLE);
 
   if (!res?.text) {
     article = null;
     $('summarize').disabled = true;
 
-    // 瀏覽器內建的 PDF 檢視器不開放頁面文字。這裡不能只說「讀不到」，
-    // 要直接給出可行的下一步 —— 用 ReadDuck 的檢視器開啟就能摘要。
-    if (!isPdfViewer && await isNativePdfTab(tab)) {
+    // PDF 不做摘要。這裡要講清楚是「不支援」而不是「讀不到」——
+    // 後者會讓人以為重新整理或換個開法就有救。
+    if (await isPdfTab(tab)) {
       showNotice('warn',
-        '瀏覽器內建的 PDF 檢視器不開放頁面文字，所以讀不到內容。\n'
-        + '用 ReadDuck 的檢視器開啟這份 PDF 就能摘要。',
-        { label: '用 ReadDuck 開啟', onClick: () => send(MSG.OPEN_PDF, { url: tab.url }) });
+        'PDF 不支援摘要與問答。\n'
+        + 'ReadDuck 的 PDF 檢視器仍然可以做雙語對照翻譯。');
       return;
     }
 
-    showNotice('warn', isPdfViewer
-      ? '這份 PDF 沒有可抽取的文字（例如掃描檔）。'
-      : '讀不到這個頁面的內容。可能是尚未載入 ReadDuck（重新整理即可），或這是瀏覽器內部頁面。');
+    // PDF 也可能落到這裡 —— tabs.query() 對自己的檢視器分頁不一定給得出 url，
+    // isPdfTab() 就認不出來。所以這則訊息也要把 PDF 列進去。
+    showNotice('warn',
+      '讀不到這個頁面的內容。可能是尚未載入 ReadDuck（重新整理即可）、'
+      + '這是瀏覽器內部頁面，或這是 PDF —— PDF 不支援摘要。');
     return;
   }
   hideNotice();
@@ -118,42 +111,19 @@ async function loadArticle() {
 }
 
 /**
- * 向 ReadDuck 的 PDF 檢視器要正文。
+ * 這個分頁是不是 PDF（不論用哪個檢視器開的）。
  *
- * 檔案還在解析時檢視器會回報 pending，這裡等它一下再問 —— 使用者常常一開檔
- * 就順手把側邊欄打開，那時候文件通常還沒讀完。
- *
- * @returns {Promise<{ answered: boolean, article: object|null }>}
- *   answered=false 代表那個分頁裡沒有檢視器，要改走 content script。
- */
-async function extractFromViewer(tabId, attempts = 12) {
-  for (let i = 0; i < attempts; i++) {
-    const res = await send(MSG.EXTRACT_ARTICLE, { tabId });
-    // 沒有帶標記就不是檢視器答的，代表這個分頁裡沒有檢視器
-    if (res?.source !== PDF_VIEWER_SOURCE) return { answered: false, article: null };
-    if (!res.pending) return { answered: true, article: res.text ? res : null };
-    setStatusLoading(i);
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return { answered: true, article: null };
-}
-
-function setStatusLoading(attempt) {
-  $('summaryBody').innerHTML =
-    `<p class="small muted"><span class="spinner"></span> PDF 讀取中…${attempt > 4 ? '（檔案較大，請稍候）' : ''}</p>`;
-}
-
-/**
- * 這個分頁是不是用瀏覽器內建檢視器開的 PDF。
- *
- * 三種判斷依序試，因為每一種都有各自漏掉的情況：
- *  1. 副檔名 —— 最快，但 arXiv 那類網址（/pdf/1710.06963）根本沒有 .pdf
- *  2. 問 content script —— 它認得 application/pdf，但擴充功能重新載入後，
+ * 依序試四種判斷，因為每一種都有各自漏掉的情況：
+ *  1. ReadDuck 自己的檢視器 —— 但 tabs.query() 對 chrome-extension:// 不一定
+ *     給得出 url（要有 tabs 權限，而 <all_urls> 不涵蓋），所以只是盡力而為
+ *  2. 副檔名 —— 最快，但 arXiv 那類網址（/pdf/1710.06963）根本沒有 .pdf
+ *  3. 問 content script —— 它認得 application/pdf，但擴充功能重新載入後，
  *     還沒重新整理過的舊分頁上不會有 content script
- *  3. 問伺服器的 content-type —— 前兩者都失敗時的保底
+ *  4. 問伺服器的 content-type —— 前面都失敗時的保底
  */
-async function isNativePdfTab(tab) {
+async function isPdfTab(tab) {
   const url = tab.url ?? '';
+  if (url.startsWith(chrome.runtime.getURL('src/pdf/pdf.html'))) return true;
   if (/\.pdf($|[?#])/i.test(url)) return true;
 
   const state = await sendToTab(tab.id, MSG.QUERY_STATE);
