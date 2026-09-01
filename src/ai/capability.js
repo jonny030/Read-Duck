@@ -49,6 +49,10 @@ export async function probe({
     browser: currentBrowser().id,
     browserVersion: currentVersion(),
     hasDocument: hasDocumentContext(),
+    // 只放進原始資料供回報問題時參考，不上診斷頁的表格 —— 它的值完全由
+    // 「探測是怎麼被觸發的」決定，不會隨裝置或模型狀態變化，放上去只是雜訊。
+    // 真正需要手勢的地方（模型尚未下載時的 Translator.create()）由
+    // translator-pool.js 的 NeedsUserActivationError 自己處理。
     userActivation: typeof navigator !== 'undefined' && navigator.userActivation
       ? { isActive: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive }
       : null,

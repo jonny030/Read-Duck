@@ -112,11 +112,11 @@ function renderEnv() {
 }
 
 function renderMatrix() {
-  const head = `<tr><th>執行情境</th>${API_NAMES.map((n) => `<th>${n}</th>`).join('')}<th>user activation</th></tr>`;
+  const head = `<tr><th>執行情境</th>${API_NAMES.map((n) => `<th>${n}</th>`).join('')}</tr>`;
   const body = CONTEXTS.map(({ key, label }) => {
     const r = results[key];
     if (!r || r.error) {
-      return `<tr><td class="ctx">${label}</td><td colspan="${API_NAMES.length + 1}">${pill('na', r?.error ?? '無資料')}</td></tr>`;
+      return `<tr><td class="ctx">${label}</td><td colspan="${API_NAMES.length}">${pill('na', r?.error ?? '無資料')}</td></tr>`;
     }
     const cells = API_NAMES.map((name) => {
       if (!r.present?.[name]) return `<td>${pill('err', '不存在')}</td>`;
@@ -124,10 +124,7 @@ function renderMatrix() {
       if (!a) return `<td>${pill('ok', '存在')}</td>`;
       return `<td>${availabilityPill(a)}</td>`;
     }).join('');
-    const ua = r.userActivation
-      ? pill(r.userActivation.isActive ? 'ok' : 'na', r.userActivation.isActive ? 'active' : 'inactive')
-      : pill('na', '不適用');
-    return `<tr><td class="ctx">${label}</td>${cells}<td>${ua}</td></tr>`;
+    return `<tr><td class="ctx">${label}</td>${cells}</tr>`;
   }).join('');
   $('matrix').innerHTML = head + body;
 }
