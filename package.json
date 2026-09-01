@@ -1,6 +1,6 @@
 {
   "name": "readduck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Chrome / Edge 內建 AI 雙語閱讀擴充功能。擴充功能本身零建置，這個 package.json 只是為了讓 node 以 ESM 解析 src/ 底下的模組來跑測試。",
   "type": "module",
