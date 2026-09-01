@@ -1,5 +1,8 @@
 /**
- * Chrome 內建 AI 的能力探測與人話化的引導訊息。
+ * 瀏覽器內建 AI 的能力探測與人話化的引導訊息。
+ *
+ * Chrome 與 Microsoft Edge 的 API 形狀一樣，這裡的探測邏輯兩邊共用；
+ * 版本門檻、內部頁面網址、硬體需求這些差異都來自 lib/browser.js。
  *
  * 重要背景（決定了整個擴充功能的架構）：
  * Translator / LanguageModel / LanguageDetector 需要一個 responsible document
@@ -7,6 +10,8 @@
  * background service worker。所有 AI 呼叫必須發生在 content script、side panel、
  * popup、options 或 offscreen document 這類「有 document」的地方。
  */
+
+import { currentBrowser, currentVersion } from '../lib/browser.js';
 
 export const API_NAMES = ['LanguageModel', 'Translator', 'LanguageDetector', 'Summarizer'];
 
@@ -41,6 +46,8 @@ export async function probe({
 } = {}) {
   const report = {
     context: guessContext(),
+    browser: currentBrowser().id,
+    browserVersion: currentVersion(),
     hasDocument: hasDocumentContext(),
     userActivation: typeof navigator !== 'undefined' && navigator.userActivation
       ? { isActive: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive }
@@ -106,6 +113,7 @@ export function describeError(err) {
  * UI 直接顯示這個結果，不要自己拼字串。
  */
 export function explainUnavailable(availability, apiName = 'AI') {
+  const browser = currentBrowser();
   switch (availability) {
     case 'available':
       return null;
@@ -124,16 +132,13 @@ export function explainUnavailable(availability, apiName = 'AI') {
     case 'unavailable':
     default:
       return {
-        title: '這台裝置無法使用內建 AI',
+        title: `這台裝置無法使用${browser.name}的內建 AI`,
         body: [
-          'ReadDuck 需要 Chrome 內建的裝置端模型，請確認：',
-          '• Chrome 138 以上（桌機版，行動版不支援）',
-          '• 至少 22 GB 可用硬碟空間',
-          '• 獨立 GPU（4 GB 以上 VRAM）或 16 GB RAM、4 核心以上 CPU',
-          '• 作業系統 Windows 10/11、macOS 13+、Linux 或 ChromeOS',
-          '• 首次下載模型時需要非計量網路',
+          `ReadDuck 需要${browser.name}內建的裝置端模型，請確認：`,
+          ...browser.requirements.map((r) => `• ${r}`),
+          ...(browser.promptNote ? ['', browser.promptNote] : []),
         ].join('\n'),
-        actions: [{ label: '檢視模型狀態', kind: 'open', url: 'chrome://on-device-internals' }],
+        actions: [{ label: '檢視模型狀態', kind: 'open', url: browser.internalsUrl }],
       };
   }
 }

@@ -93,11 +93,11 @@ async function loadArticle() {
     article = null;
     $('summarize').disabled = true;
 
-    // Chrome 內建的 PDF 檢視器不開放頁面文字。這裡不能只說「讀不到」，
+    // 瀏覽器內建的 PDF 檢視器不開放頁面文字。這裡不能只說「讀不到」，
     // 要直接給出可行的下一步 —— 用 ReadDuck 的檢視器開啟就能摘要。
     if (!isPdfViewer && await isNativePdfTab(tab)) {
       showNotice('warn',
-        'Chrome 內建的 PDF 檢視器不開放頁面文字，所以讀不到內容。\n'
+        '瀏覽器內建的 PDF 檢視器不開放頁面文字，所以讀不到內容。\n'
         + '用 ReadDuck 的檢視器開啟這份 PDF 就能摘要。',
         { label: '用 ReadDuck 開啟', onClick: () => send(MSG.OPEN_PDF, { url: tab.url }) });
       return;
@@ -142,7 +142,7 @@ function setStatusLoading(attempt) {
 }
 
 /**
- * 這個分頁是不是用 Chrome 內建檢視器開的 PDF。
+ * 這個分頁是不是用瀏覽器內建檢視器開的 PDF。
  *
  * 三種判斷依序試，因為每一種都有各自漏掉的情況：
  *  1. 副檔名 —— 最快，但 arXiv 那類網址（/pdf/1710.06963）根本沒有 .pdf
@@ -537,7 +537,7 @@ async function createQaSession(signal) {
     + 'Questions may be written in any language; always answer in the language you were instructed to use.'
     + `\n\nTitle: ${article.title}\n\n${text}`;
   // append() 把正文放進上下文但不觸發生成，是最省事的做法；
-  // 舊版 Chrome 沒有這個方法，退回「夾在第一個提問前面」。
+  // 舊版瀏覽器沒有這個方法，退回「夾在第一個提問前面」。
   if (typeof s.append === 'function') {
     await s.append([{ role: 'user', content: context }]);
     pendingContext = null;

@@ -38,7 +38,7 @@ async function boot() {
     return;
   }
 
-  // Chrome 內建的 PDF 檢視器裡沒有可翻譯的 HTML 文字，段落收集、劃選、
+  // 瀏覽器內建的 PDF 檢視器裡沒有可翻譯的 HTML 文字，段落收集、劃選、
   // 輸入框翻譯全都用不上。只掛一顆把它導到 ReadDuck 檢視器的鴨子。
   if (isPdfDocument()) {
     mountPdfFab();
@@ -88,7 +88,7 @@ async function openSidePanel() {
   }
 }
 
-/** Chrome 內建 PDF 檢視器上的鴨子：點下去用 ReadDuck 的檢視器重新開啟。 */
+/** 瀏覽器內建 PDF 檢視器上的鴨子：點下去用 ReadDuck 的檢視器重新開啟。 */
 function mountPdfFab() {
   if (!settings.showFloatingButton) return;
   ui.showFab({

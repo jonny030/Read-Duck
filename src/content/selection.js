@@ -9,6 +9,7 @@ import {
 import { promptLocalized } from '../ai/localize.js';
 import { explainSystemPrompt, simplifySystemPrompt } from '../ai/prompts.js';
 import { explainUnavailable } from '../ai/capability.js';
+import { currentBrowser } from '../lib/browser.js';
 import { sameLanguage, languageName } from '../ai/languages.js';
 import { mightAlreadyBe } from './script-detect.js';
 import { MSG, send } from '../lib/messaging.js';
@@ -220,7 +221,12 @@ async function runTranslate(text, panel, signal) {
 
 async function runPrompt(action, text, panel, signal) {
   if (!isLanguageModelPresent()) {
-    panel.setError('這個瀏覽器沒有 Prompt API（需要 Chrome 138 以上）。');
+    const b = currentBrowser();
+    panel.setError(
+      `這個瀏覽器沒有 Prompt API（需要 ${b.name} ${b.promptMinVersion} 以上`
+      + (b.promptNeedsFlag ? `，並在 ${b.flagsUrl} 啟用「${b.promptFlag}」` : '')
+      + '）。'
+    );
     return;
   }
   const plan = planOutputLanguage(settings.targetLanguage);

@@ -3,6 +3,6 @@
     "message": "ReadDuck 讀鴨"
   },
   "extDesc": {
-    "message": "用 Chrome 內建的裝置端 AI 做雙語對照翻譯、劃選解釋與整頁摘要。不需 API key，資料不離開你的電腦。"
+    "message": "用 Chrome / Edge 內建的裝置端 AI 做雙語對照翻譯、劃選解釋與整頁摘要。不需 API key，資料不離開你的電腦。"
   }
 }

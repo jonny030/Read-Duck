@@ -1,20 +1,29 @@
 # ReadDuck 讀鴨
 
-在網頁與 PDF 上做雙語對照閱讀的 Chrome 擴充功能。翻譯、解釋、摘要**全部在你自己的電腦上跑** ——
-用的是 Chrome 138 起內建的裝置端 AI，不需要 API key、不產生費用、看的內容不會離開這台機器。
+在網頁與 PDF 上做雙語對照閱讀的瀏覽器擴充功能，支援 **Chrome 與 Microsoft Edge**。
+翻譯、解釋、摘要**全部在你自己的電腦上跑** —— 用的是瀏覽器內建的裝置端 AI，
+不需要 API key、不產生費用、看的內容不會離開這台機器。
 
-互動設計參考沉浸式翻譯，引擎換成 Chrome 內建的
-[Translator API](https://developer.chrome.com/docs/ai/translator-api)、
-[Language Detector API](https://developer.chrome.com/docs/ai/language-detection) 與
-[Prompt API](https://developer.chrome.com/docs/ai/prompt-api)。
+互動設計參考沉浸式翻譯，引擎換成瀏覽器內建的 Translator / Language Detector / Prompt API：
+
+| | Chrome | Microsoft Edge |
+|---|---|---|
+| Translator / Language Detector | [138 起](https://developer.chrome.com/docs/ai/translator-api) | [148 起](https://learn.microsoft.com/microsoft-edge/web-platform/translator-api) |
+| Prompt API（摘要／解釋／問答） | [138 起](https://developer.chrome.com/docs/ai/prompt-api)，Gemini Nano | [138.0.3309.2 起](https://learn.microsoft.com/microsoft-edge/web-platform/prompt-api)，Phi‑4‑mini，**限 Canary / Dev 且需自行開啟 flag** |
+
+同一份程式碼、同一個 zip 兩邊都能裝；差異（版本門檻、內部頁面網址、可用的輸出語言）
+由 `src/lib/browser.js` 在執行時判斷。
 
 ---
 
 ## 使用方法
 
-1. 開啟 `chrome://extensions`，右上角打開「開發人員模式」
+1. 開啟 `chrome://extensions`（Edge 是 `edge://extensions`），打開「開發人員模式」
 2. 點「載入未封裝項目」，選這個資料夾（零建置 —— 不必 `npm install`，不必打包）
 3. 隨便開一個英文網頁，點右下角的鴨子 🦆
+
+**Edge 使用者請先看〈[在 Microsoft Edge 上](#在-microsoft-edge-上)〉** ——
+摘要／解釋／問答目前需要 Canary 或 Dev 版並手動開一個 flag。
 
 第一次翻譯會下載該語言對的翻譯模型，很小，通常幾秒就好。
 **摘要、解釋、簡化、問答用的是另一套數 GB 的語言模型**，第一次用到時會先問過你才開始下載 ——
@@ -77,11 +86,11 @@
 
 ### 4. PDF 翻譯
 
-Chrome 內建的 PDF 檢視器沒辦法加譯文，所以 ReadDuck 附了自己的檢視器。
+瀏覽器內建的 PDF 檢視器沒辦法加譯文，所以 ReadDuck 附了自己的檢視器。
 
 **怎麼開啟：**
 
-- 用 Chrome 開著 PDF 時，點右下角的鴨子 —— 會用 ReadDuck 的檢視器重開同一份檔案
+- 用瀏覽器開著 PDF 時，點右下角的鴨子 —— 會用 ReadDuck 的檢視器重開同一份檔案
 - 在 PDF 網址上點工具列圖示 →「翻譯 PDF」（這時它會是主要按鈕）
 - 在指向 PDF 的連結上按右鍵 →「用 ReadDuck 翻譯這個 PDF」
 - 本機檔案：打開檢視器後按「開啟本機檔案」，或直接把檔案拖進去（不需要開啟「允許存取檔案網址」）
@@ -124,7 +133,7 @@ Chrome 內建的 PDF 檢視器沒辦法加譯文，所以 ReadDuck 附了自己�
 
 ## 兩套模型
 
-ReadDuck 會用到兩套彼此獨立的模型 —— 這是 Chrome 的架構決定的，不是本專案的選擇。
+ReadDuck 會用到兩套彼此獨立的模型 —— 這是瀏覽器的架構決定的，不是本專案的選擇。
 官方文件的說法是「Translator 和 Language Detector API 使用專家模型，其餘所有 API 使用語言模型」：
 
 | 功能 | 模型 | 大小 | 何時下載 |
@@ -139,7 +148,8 @@ ReadDuck 會用到兩套彼此獨立的模型 —— 這是 Chrome 的架構決�
 瀏覽器規定模型下載必須由使用者操作觸發，所以第一次一定要你自己點一下按鈕；
 之後設定成自動翻譯的網站就能一開頁直接翻。
 
-想看目前的模型狀態：工具列圖示 →「診斷」，或直接開 `chrome://on-device-internals`。
+想看目前的模型狀態：工具列圖示 →「診斷」，或直接開 `chrome://on-device-internals`
+（Edge 是 `edge://on-device-internals`）。
 
 ---
 
@@ -156,15 +166,52 @@ ReadDuck 會用到兩套彼此獨立的模型 —— 這是 Chrome 的架構決�
 
 ---
 
+## 在 Microsoft Edge 上
+
+Edge 也是 Chromium，API 形狀與 Chrome 一模一樣，所以功能完全相同。要注意三件事：
+
+**1. 翻譯需要 Edge 148 以上。** 雙語對照、劃選即譯、PDF 翻譯只要版本夠就能直接用。
+
+**2. 摘要／解釋／簡化／問答還在開發者預覽。** 需要 Edge **Canary 或 Dev**
+（138.0.3309.2 以上），並且手動開啟 flag：
+
+1. 開 `edge://flags`，搜尋 **Prompt API for on-device language model**
+2. 設為 **Enabled**，重新啟動 Edge
+3. 開 `edge://on-device-internals`，確認「裝置效能類別」是 **High** 以上
+
+效能類別是 Medium 或 Low 的話 Phi‑4‑mini 不會啟用，可以改用較小的 Aion‑1.0‑Instruct ——
+需要 Edge 150.0.4070 以上，另外開啟 **Enable pre-release on-device language model** flag。
+
+**3. Edge 上的摘要一律先用英文生成，再由 Translator API 轉成你的目標語言。**
+Chrome 的 Prompt API 保證 `en / ja / es / de / fr` 五種輸出語言，Microsoft 沒有對
+Phi‑4‑mini 做同樣的承諾，所以 ReadDuck 不賭它的多語能力 —— 讓專用翻譯模型做翻譯，
+結果比讓小模型直接寫外語穩定。中文使用者在 Chrome 上本來就走這條路，體感沒有差別；
+日／西／德／法使用者在 Edge 上會多一次轉譯。
+
+診斷頁（工具列圖示 →「診斷」）會直接顯示目前判定成哪個瀏覽器、flag 有沒有開、
+以及模型輸出語言會怎麼走。
+
+---
+
 ## 系統需求
 
-內建 AI 對硬體有實際門檻，不符合的話擴充功能會直接告訴你缺什麼：
+內建 AI 對硬體有實際門檻，不符合的話擴充功能會直接告訴你缺什麼。
+
+**Chrome**
 
 - **Chrome 138 以上**（桌機版；行動版不支援）
 - Windows 10/11、macOS 13+、Linux 或 ChromeOS 16389.0.0+
 - **至少 22 GB 可用硬碟空間**（模型檔案）
 - 獨立 GPU（4 GB 以上 VRAM）**或** 16 GB RAM 加 4 核心以上 CPU
 - 首次下載模型時需要非計量網路連線
+
+**Microsoft Edge**
+
+- 翻譯：**Edge 148 以上**；摘要／解釋／問答：**Canary 或 Dev 138.0.3309.2 以上 + flag**
+- Windows 10/11 或 macOS 13.3 以上
+- **至少 20 GB 可用硬碟空間**（低於 10 GB 時模型會被自動刪除）
+- **5.5 GB 以上 VRAM**，且「裝置效能類別」為 High 以上
+- 首次下載模型時需要非計量網路連線（計量連線不會下載模型）
 
 不確定這台機器行不行？安裝後開**診斷頁**（工具列圖示 →「診斷」），它會實測並列出結果。
 
@@ -174,11 +221,12 @@ ReadDuck 會用到兩套彼此獨立的模型 —— 這是 Chrome 的架構決�
 
 | 症狀 | 原因與處理 |
 |---|---|
-| 頁面上沒有鴨子 | `chrome://`、擴充功能商店這類瀏覽器內部頁面不支援；或設定頁把它關掉了；剛安裝／剛重新載入擴充功能的話，已開著的分頁要重新整理一次 |
+| 頁面上沒有鴨子 | `chrome://` / `edge://`、擴充功能商店這類瀏覽器內部頁面不支援；或設定頁把它關掉了；剛安裝／剛重新載入擴充功能的話，已開著的分頁要重新整理一次 |
 | 摘要說「讀不到這個頁面的內容」 | 同上，重新整理那個分頁即可 |
 | 按了翻譯卻沒動靜 | 第一次會下載翻譯模型，開診斷頁看模型狀態 |
 | 摘要／解釋要求下載數 GB | 那是語言模型，跟翻譯是兩套。看〈[兩套模型](#兩套模型)〉 |
 | 說這台裝置不支援 | 開診斷頁，它會列出實際缺的是哪一項 |
+| Edge 上翻譯可以、摘要卻說沒有 Prompt API | Prompt API 還在開發者預覽，見〈[在 Microsoft Edge 上](#在-microsoft-edge-上)〉 |
 | PDF 開起來說「沒有可抽取的文字」 | 掃描檔（純圖片）沒有文字層，抽不出東西；ReadDuck 不做 OCR |
 | 某個網站翻譯失敗 | 該網站可能用 `Permissions-Policy` 擋掉翻譯 API，ReadDuck 會自動改走備援路徑，此時沒有串流效果 |
 

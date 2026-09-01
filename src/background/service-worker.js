@@ -224,7 +224,7 @@ function openSidePanel(tab) {
 /**
  * 用 ReadDuck 自己的檢視器開啟 PDF。
  *
- * Chrome 內建的 PDF 檢視器是獨立的外掛程序，content script 碰不到它裡面的
+ * 瀏覽器內建的 PDF 檢視器是獨立的外掛程序，content script 碰不到它裡面的
  * 文字，所以沒辦法在上面加譯文 —— 只能另開一個用 PDF.js 自己畫的檢視器。
  * 不帶 url 就開空的檢視器，讓使用者自己拖檔案進去。
  */

@@ -20,7 +20,7 @@ export function createShadowHost(tagName, css) {
 }
 
 /**
- * 這個文件是不是 Chrome 內建 PDF 檢視器所呈現的 PDF。
+ * 這個文件是不是瀏覽器內建 PDF 檢視器所呈現的 PDF。
  *
  * 最上層文件的 contentType 是 application/pdf，但它仍然有 body、也能注入
  * 元素（檢視器本身在巢狀 iframe 裡），所以我們可以在上面掛浮動按鈕。
@@ -38,7 +38,7 @@ export function isVisible(el) {
   return style.visibility !== 'hidden' && style.display !== 'none' && style.opacity !== '0';
 }
 
-/** requestIdleCallback 的安全版（Safari 沒有，雖然這裡只跑 Chrome，但成本很低）。 */
+/** requestIdleCallback 的安全版（Safari 沒有，雖然這裡只跑 Chromium，但成本很低）。 */
 export const idle =
   typeof requestIdleCallback === 'function'
     ? (fn, opts) => requestIdleCallback(fn, opts)

@@ -1,6 +1,6 @@
 import * as ui from './ui.js';
 import {
-  createSession, promptStream, PROMPT_API_OUTPUT_LANGUAGES,
+  createSession, promptStream, promptOutputLanguages,
   needsDownloadConsent, DOWNLOAD_NOTICE,
 } from '../ai/language-model.js';
 import { translateText } from '../ai/translator-pool.js';
@@ -48,7 +48,7 @@ export async function translateFocusedInput() {
   busy = true;
   const toast = ui.showToast(`改寫成${languageName(target)}…`, { timeout: 0 });
   try {
-    const out = PROMPT_API_OUTPUT_LANGUAGES.includes(target)
+    const out = promptOutputLanguages().includes(target)
       ? await rewriteWithModel(original, target, toast)
       : await translateDirectly(original, target, toast);
 
@@ -70,7 +70,7 @@ export async function translateFocusedInput() {
 /** Prompt API 路線：追求道地的表達，而不是字面翻譯。 */
 async function rewriteWithModel(original, target, toast) {
   if (!session) {
-    // 走到這個函式時 target 一定在 PROMPT_API_OUTPUT_LANGUAGES 內
+    // 走到這個函式時 target 一定在 promptOutputLanguages() 內
     if (await needsDownloadConsent(target)) {
       // showToast 本身就會收掉前一則，不需要先 close
       const agreed = await confirmDownload();

@@ -1,5 +1,6 @@
 import { normalizeAvailability, describeError } from './capability.js';
 import { canonical } from './languages.js';
+import { currentBrowser, BROWSER_PROFILES } from '../lib/browser.js';
 
 /**
  * LanguageModel（Prompt API）的 session 管理。
@@ -7,8 +8,9 @@ import { canonical } from './languages.js';
  * 幾個實務重點：
  * - **每次請求都必須指定輸出語言。** 沒指定的話 Chrome 會在 console 警告
  *   「No output language was specified」，而且輸出品質與安全性都無法保證。
- *   可用的輸出語言只有 en / ja / es / de / fr —— 中文不在其中，所以中文
- *   一律走「模型輸出英文 → Translator API 轉中文」的雙段管線，
+ *   可用的輸出語言由瀏覽器決定（見 promptOutputLanguages()）：Chrome 是
+ *   en / ja / es / de / fr，Edge 只有 en。中文兩邊都不在其中，所以中文一律走
+ *   「模型輸出英文 → Translator API 轉中文」的雙段管線，
  *   見 planOutputLanguage() 與 localize.js。
  * - params() 是擴充功能專屬能力，一般網頁拿不到 topK / temperature 調整權。
  *   翻譯與摘要這類任務用低 temperature 明顯更穩，這是本擴充相對網頁版的優勢。
@@ -24,11 +26,11 @@ export function isLanguageModelPresent() {
  * 檢查輸出語言是否合法。createSession 與 checkAvailability 共用 ——
  * 兩者都是 LanguageModel API request，都必須帶上輸出語言。
  */
-function assertOutputLanguage(outputLanguage) {
-  if (PROMPT_API_OUTPUT_LANGUAGES.includes(outputLanguage)) return;
+function assertOutputLanguage(outputLanguage, languages = promptOutputLanguages()) {
+  if (languages.includes(outputLanguage)) return;
   throw new Error(
     `Prompt API 不支援輸出語言 "${outputLanguage}"。` +
-    `可用的只有 ${PROMPT_API_OUTPUT_LANGUAGES.join(' / ')}，` +
+    `可用的只有 ${languages.join(' / ')}，` +
     '請先用 planOutputLanguage() 決定要讓模型輸出哪一種語言。'
   );
 }
@@ -56,10 +58,23 @@ export async function checkAvailability(outputLanguage) {
 }
 
 /**
- * Prompt API 保證支援的輸出語言。這是模型本身的限制，不是我們的選擇。
+ * Chrome 的 Prompt API 保證支援的輸出語言。這是模型本身的限制，不是我們的選擇。
  * 指定清單以外的語言會被拒絕；完全不指定則會拿到品質與安全性都不保證的輸出。
+ *
+ * 想知道「目前這個瀏覽器」能輸出什麼，請用 promptOutputLanguages() ——
+ * Edge 的清單只有 en。
  */
-export const PROMPT_API_OUTPUT_LANGUAGES = Object.freeze(['en', 'ja', 'es', 'de', 'fr']);
+export const PROMPT_API_OUTPUT_LANGUAGES = BROWSER_PROFILES.chrome.promptOutputLanguages;
+
+/**
+ * 目前瀏覽器的 Prompt API 可輸出語言。
+ *
+ * Chrome 保證 en / ja / es / de / fr；Edge（Phi-4-mini / Aion-1.0-Instruct）
+ * 沒有公開保證任何語言，因此只採用 en，其餘一律交給 Translator API 轉換。
+ */
+export function promptOutputLanguages() {
+  return currentBrowser().promptOutputLanguages;
+}
 
 /**
  * 決定「要讓模型用哪種語言輸出」以及「事後要不要轉譯」。
@@ -70,9 +85,9 @@ export const PROMPT_API_OUTPUT_LANGUAGES = Object.freeze(['en', 'ja', 'es', 'de'
  *
  * @returns {{ modelLanguage: string, finalLanguage: string, needsTranslation: boolean }}
  */
-export function planOutputLanguage(targetLanguage) {
+export function planOutputLanguage(targetLanguage, languages = promptOutputLanguages()) {
   const target = canonical(targetLanguage);
-  if (PROMPT_API_OUTPUT_LANGUAGES.includes(target)) {
+  if (languages.includes(target)) {
     return { modelLanguage: target, finalLanguage: target, needsTranslation: false };
   }
   return { modelLanguage: 'en', finalLanguage: target, needsTranslation: true };
@@ -88,7 +103,7 @@ export function planOutputLanguage(targetLanguage) {
  */
 export const DOWNLOAD_NOTICE = Object.freeze({
   title: '需要先下載語言模型',
-  body: '摘要、解釋、簡化與問答使用 Chrome 的裝置端語言模型，'
+  body: '摘要、解釋、簡化與問答使用瀏覽器的裝置端語言模型，'
       + '它和翻譯用的模型是分開的，所以即使翻譯已經可以用，這個仍需要另外下載。\n'
       + '檔案有數 GB，只需下載一次，之後所有 AI 功能都能直接使用。',
   confirm: '下載並繼續',
@@ -125,7 +140,7 @@ export async function getParams() {
  * @param {object} o
  * @param {string} o.systemPrompt
  * @param {'precise'|'balanced'|'creative'} [o.mode] 決定 temperature/topK
- * @param {string} o.outputLanguage **必填**，且必須是 PROMPT_API_OUTPUT_LANGUAGES
+ * @param {string} o.outputLanguage **必填**，且必須是 promptOutputLanguages()
  *        裡的其中一個。用 planOutputLanguage() 取得。
  * @param {string[]} [o.inputLanguages] 用來填 expectedInputs
  */
@@ -163,7 +178,7 @@ export async function createSession({
   // 輸入語言只宣告確定支援的，宣告不支援的會直接拋 NotSupportedError。
   // 這個欄位可以省略，省略也不會有警告。
   const inputs = dedupe((inputLanguages ?? []).map(canonical))
-    .filter((l) => PROMPT_API_OUTPUT_LANGUAGES.includes(l));
+    .filter((l) => promptOutputLanguages().includes(l));
   if (inputs.length) {
     opts.expectedInputs = [{ type: 'text', languages: inputs }];
   }

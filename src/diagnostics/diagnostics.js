@@ -3,7 +3,8 @@ import { probe, API_NAMES, explainUnavailable } from '../ai/capability.js';
 import { getSettings } from '../lib/settings.js';
 import { SUPPORTED_LANGUAGES, languageName } from '../ai/languages.js';
 import { translateText, checkAvailability } from '../ai/translator-pool.js';
-import { getParams, planOutputLanguage, PROMPT_API_OUTPUT_LANGUAGES } from '../ai/language-model.js';
+import { getParams, planOutputLanguage, promptOutputLanguages } from '../ai/language-model.js';
+import { currentBrowser, currentVersion } from '../lib/browser.js';
 
 /**
  * M0 能力探測頁。
@@ -37,7 +38,8 @@ async function init() {
   $('testTarget').value = settings.targetLanguage;
 
   $('rerun').addEventListener('click', runAll);
-  $('openInternals').addEventListener('click', () => chrome.tabs.create({ url: 'chrome://on-device-internals' }));
+  $('openInternals').textContent = `開啟 ${currentBrowser().internalsUrl}`;
+  $('openInternals').addEventListener('click', () => chrome.tabs.create({ url: currentBrowser().internalsUrl }));
   $('downloadTranslator').addEventListener('click', downloadTranslator);
   $('downloadLm').addEventListener('click', downloadLanguageModel);
   $('testRun').addEventListener('click', runTest);
@@ -75,15 +77,35 @@ async function runAll() {
 }
 
 function renderEnv() {
-  const chromeVersion = navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] ?? '未知';
-  const ok = Number(chromeVersion) >= 138;
+  const b = currentBrowser();
+  const version = currentVersion();
+  // 版本讀不到時不要亂判「過舊」—— 那比沒有資訊更誤導。
+  const versionCell = version == null
+    ? `未知 ${pill('na', '讀不到版本')}`
+    : `${version} ${pill(
+        version >= b.minVersion ? 'ok' : 'err',
+        version >= b.minVersion ? `符合（需 ${b.minVersion}+）` : `過舊，需 ${b.minVersion} 以上`,
+      )}`;
+
   const rows = [
-    ['Chrome 版本', `${chromeVersion} ${pill(ok ? 'ok' : 'err', ok ? '符合（需 138+）' : '過舊，需 138 以上')}`],
+    ['瀏覽器', b.name],
+    [`${b.name} 版本`, versionCell],
     ['平台', navigator.platform ?? '未知'],
     ['邏輯核心數', navigator.hardwareConcurrency ?? '未知'],
     ['裝置記憶體', navigator.deviceMemory ? `約 ${navigator.deviceMemory} GB` : '瀏覽器未提供'],
     ['擴充功能版本', chrome.runtime.getManifest().version],
   ];
+
+  // Edge 的 Prompt API 還是開發者預覽，沒開 flag 的話 LanguageModel 根本不存在，
+  // 只看「API 不存在」會以為是裝置不支援。
+  if (b.promptNeedsFlag) {
+    rows.push([
+      'Prompt API',
+      `需要 ${b.name} ${b.promptMinVersion}+（Canary / Dev），並在 `
+      + `<span class="mono">${b.flagsUrl}</span> 啟用「${escapeHtml(b.promptFlag)}」`,
+    ]);
+  }
+
   $('env').innerHTML = rows
     .map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`)
     .join('');
@@ -151,8 +173,8 @@ async function renderModels() {
     plan.needsTranslation
       ? `<span class="pill warn">${languageName(plan.modelLanguage)}</span> ` +
         `→ 再由翻譯模型轉成 ${languageName(plan.finalLanguage)}` +
-        `<div class="small muted" style="margin-top:4px">Prompt API 保證的輸出語言只有 ` +
-        `${PROMPT_API_OUTPUT_LANGUAGES.join(' / ')}，不含${languageName(plan.finalLanguage)}。</div>`
+        `<div class="small muted" style="margin-top:4px">${currentBrowser().name} 的 Prompt API 可輸出的語言只有 ` +
+        `${promptOutputLanguages().join(' / ')}，不含${languageName(plan.finalLanguage)}。</div>`
       : `<span class="pill ok">${languageName(plan.modelLanguage)}</span> 直接輸出，不需轉譯`,
   ]);
 
@@ -199,8 +221,14 @@ async function downloadLanguageModel() {
   const status = $('downloadStatus');
   status.textContent = '準備下載…';
   try {
-    if (!('LanguageModel' in self)) throw new Error('這個 Chrome 沒有 LanguageModel API');
-    // expectedOutputs 一定要帶。少了它 Chrome 會警告
+    if (!('LanguageModel' in self)) {
+      const b = currentBrowser();
+      throw new Error(
+        `這個${b.name}沒有 LanguageModel API`
+        + (b.promptNeedsFlag ? `（請先在 ${b.flagsUrl} 啟用「${b.promptFlag}」）` : ''),
+      );
+    }
+    // expectedOutputs 一定要帶。少了它瀏覽器會警告
     // "No output language was specified"，而且輸出品質與安全性都不保證。
     const plan = planOutputLanguage(settings.targetLanguage);
     const s = await self.LanguageModel.create({

@@ -33,7 +33,7 @@ async function init() {
     $('pdf').className = 'primary';
     // 標籤要短，否則按鈕列會換行，把後面的按鈕擠到第二行
     $('pdf').textContent = '翻譯 PDF';
-    showNotice('warn', 'Chrome 內建的 PDF 檢視器無法加上譯文，請用 ReadDuck 的檢視器開啟。');
+    showNotice('warn', '瀏覽器內建的 PDF 檢視器無法加上譯文，請用 ReadDuck 的檢視器開啟。');
   }
 
   bind();
@@ -129,7 +129,7 @@ function render() {
     dot.className = 'dot warn';
     $('toggle').checked = false;
     $('toggle').disabled = true;
-    setStateText('Chrome 的檢視器無法加上譯文');
+    setStateText('瀏覽器內建的檢視器無法加上譯文');
     return;
   }
   if (state.disabledByDomain) {

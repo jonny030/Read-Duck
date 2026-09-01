@@ -3,6 +3,6 @@
     "message": "ReadDuck"
   },
   "extDesc": {
-    "message": "Bilingual inline translation, selection explain and page summary powered by Chrome's on-device AI. No API key, nothing leaves your machine."
+    "message": "Bilingual inline translation, selection explain and page summary, using Chrome/Edge built-in on-device AI. No API key, no cloud."
   }
 }
