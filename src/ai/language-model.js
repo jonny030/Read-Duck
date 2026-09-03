@@ -44,13 +44,15 @@ function assertOutputLanguage(outputLanguage, languages = promptOutputLanguages(
  *
  * @param {string} outputLanguage 必填，用 planOutputLanguage() 取得
  */
-export async function checkAvailability(outputLanguage) {
+export async function checkAvailability(outputLanguage, { image = false } = {}) {
   assertOutputLanguage(outputLanguage);
   if (!isLanguageModelPresent()) return 'unavailable';
+  const request = { expectedOutputs: [{ type: 'text', languages: [outputLanguage] }] };
+  // 圖片是另一種模態，很可能是另一份模型資料。不帶這個宣告查到的是純文字
+  // 模型的狀態 —— 會回報「可用」，然後在 create() 時才失敗。
+  if (image) request.expectedInputs = [{ type: 'image' }];
   try {
-    return normalizeAvailability(await self.LanguageModel.availability({
-      expectedOutputs: [{ type: 'text', languages: [outputLanguage] }],
-    }));
+    return normalizeAvailability(await self.LanguageModel.availability(request));
   } catch (e) {
     console.warn('[ReadDuck] LanguageModel.availability failed:', describeError(e));
     return 'unavailable';
@@ -120,8 +122,8 @@ export const DOWNLOAD_NOTICE = Object.freeze({
  * true 代表呼叫端應該先徵得使用者同意，再去建立 session。
  * 已經在下載中（'downloading'）不會重複詢問。
  */
-export async function needsDownloadConsent(outputLanguage) {
-  return (await checkAvailability(outputLanguage)) === 'downloadable';
+export async function needsDownloadConsent(outputLanguage, opts) {
+  return (await checkAvailability(outputLanguage, opts)) === 'downloadable';
 }
 
 let cachedParams = null;
@@ -143,12 +145,15 @@ export async function getParams() {
  * @param {string} o.outputLanguage **必填**，且必須是 promptOutputLanguages()
  *        裡的其中一個。用 planOutputLanguage() 取得。
  * @param {string[]} [o.inputLanguages] 用來填 expectedInputs
+ * @param {boolean} [o.imageInput] 這個 session 要不要收圖片。查 availability 時
+ *        也必須帶同一組宣告，否則查到的是純文字模型的狀態。
  */
 export async function createSession({
   systemPrompt,
   mode = 'precise',
   outputLanguage,
   inputLanguages,
+  imageInput = false,
   signal,
   onDownloadProgress,
   initialPrompts,
@@ -177,11 +182,12 @@ export async function createSession({
 
   // 輸入語言只宣告確定支援的，宣告不支援的會直接拋 NotSupportedError。
   // 這個欄位可以省略，省略也不會有警告。
-  const inputs = dedupe((inputLanguages ?? []).map(canonical))
+  const expectedInputs = [];
+  const langs = dedupe((inputLanguages ?? []).map(canonical))
     .filter((l) => promptOutputLanguages().includes(l));
-  if (inputs.length) {
-    opts.expectedInputs = [{ type: 'text', languages: inputs }];
-  }
+  if (langs.length) expectedInputs.push({ type: 'text', languages: langs });
+  if (imageInput) expectedInputs.push({ type: 'image' });
+  if (expectedInputs.length) opts.expectedInputs = expectedInputs;
 
   if (onDownloadProgress) {
     opts.monitor = (m) => {
@@ -300,13 +306,24 @@ export async function promptJson(session, input, schema, { signal } = {}) {
 
 /** 降級路線：約束解碼不可用時，改用文字指示要求模型自己遵守 schema。 */
 function withSchemaInPrompt(input, schema) {
-  return [
-    input,
-    '',
+  const instruction = [
     'Reply with a single JSON object matching this schema.',
     'Output only the JSON — no code fence, no commentary before or after.',
     JSON.stringify(schema),
   ].join('\n');
+
+  // 多模態輸入是 [{ role, content: [...] }]，直接和字串相接會被轉成
+  // "[object Object]"。這種時候把指示接成最後一則訊息的另一段文字。
+  if (Array.isArray(input)) {
+    const last = input.length - 1;
+    return input.map((msg, i) => (i !== last ? msg : {
+      ...msg,
+      content: Array.isArray(msg.content)
+        ? [...msg.content, { type: 'text', value: instruction }]
+        : [{ type: 'text', value: String(msg.content) }, { type: 'text', value: instruction }],
+    }));
+  }
+  return `${input}\n\n${instruction}`;
 }
 
 function parseJsonOutput(raw) {

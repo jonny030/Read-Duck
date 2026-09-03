@@ -97,6 +97,24 @@ export const PROMPTS = Object.freeze([
     ].join('\n'),
   },
   {
+    key: 'imageTranscribe',
+    label: '圖片文字辨識',
+    where: '在圖片上按右鍵 →「翻譯圖片中的文字」',
+    // 模型只負責逐字轉錄，翻譯交給 Translator —— 和文字管線同樣的分工。
+    // 所以這則不需要輸出語言的指示，轉錄本來就該用圖片裡原本的語言。
+    appendRespondIn: false,
+    body: [
+      'Read all text in this image and transcribe it verbatim.',
+      'The image may be one tile cropped out of a larger picture, so text may be'
+      + ' cut off at the edges — transcribe what you can read and ignore fragments.',
+      'Rules:',
+      '- Output only the text you can actually read. Do not translate it.',
+      '- Keep the original reading order, one line per visual line.',
+      '- Do not describe the image, the layout, or anything you cannot read as text.',
+      '- If there is no readable text at all, output exactly: NO_TEXT',
+    ].join('\n'),
+  },
+  {
     key: 'inputRewrite',
     label: '輸入框翻譯',
     where: '在輸入框上按右鍵 →「翻譯這個輸入框的內容」',
@@ -144,6 +162,7 @@ export const summarySystemPrompt = (lang, custom) => buildPrompt('summary', lang
 export const chunkSummarySystemPrompt = (lang, custom) => buildPrompt('chunkSummary', lang, custom);
 export const qaSystemPrompt = (lang, custom) => buildPrompt('qa', lang, custom);
 export const inputRewriteSystemPrompt = (lang, custom) => buildPrompt('inputRewrite', lang, custom);
+export const imageTranscribeSystemPrompt = (lang, custom) => buildPrompt('imageTranscribe', lang, custom);
 
 /**
  * 摘要的結構化輸出 schema。搭配 omitResponseConstraintInput: true 使用。

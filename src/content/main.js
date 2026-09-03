@@ -1,6 +1,7 @@
 import { PageTranslator } from './page-translator.js';
 import * as selection from './selection.js';
 import * as inputTranslate from './input-translate.js';
+import * as imageTranslate from './image-translate.js';
 import * as ui from './ui.js';
 import { extractArticle } from './collector.js';
 import { getSettings, onSettingsChanged, hostnameOf, domainListMatches } from '../lib/settings.js';
@@ -51,6 +52,7 @@ async function boot() {
   translator = new PageTranslator({ settings, onState: onTranslatorState });
   selection.init(settings);
   inputTranslate.init(settings);
+  imageTranslate.init(settings);
 
   if (settings.showFloatingButton) mountFab();
 
@@ -112,6 +114,7 @@ function applySettings(patch) {
   translator?.updateSettings(patch);
   selection.updateSettings(patch);
   inputTranslate.updateSettings(patch);
+  imageTranslate.updateSettings(patch);
 
   if ('showFloatingButton' in patch) {
     if (patch.showFloatingButton) mountFab();
@@ -177,6 +180,11 @@ function onMessage(msg, _sender, sendResponse) {
       sendResponse({ ok: true });
       return false;
 
+    case MSG.TRANSLATE_IMAGE:
+      imageTranslate.translateImage(msg.payload?.srcUrl);
+      sendResponse({ ok: true });
+      return false;
+
     case MSG.EXPLAIN_SELECTION:
       selection.runOnSelection(msg.payload?.action || 'explain');
       sendResponse({ ok: true });
@@ -199,6 +207,7 @@ function cleanup() {
   translator?.destroy();
   selection.destroy();
   inputTranslate.destroy();
+  imageTranslate.destroy();
   destroyTranslators();
   resetDetector();
   ui.teardownUi();

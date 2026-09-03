@@ -12,12 +12,17 @@ export const MSG = {
   OPEN_SIDE_PANEL:  'ui:openSidePanel',
   OPEN_OPTIONS:     'ui:openOptions',
   OPEN_PDF:         'ui:openPdf',
+  /** 跨來源圖片只能由 service worker 抓，見那邊的說明 */
+  FETCH_IMAGE:      'image:fetch',
+  /** 抓不到時的後路：擷取可見畫面，再由 content script 裁出圖片那一塊 */
+  CAPTURE_TAB:      'image:capture',
 
   // service worker -> content script
   TOGGLE:           'cmd:toggle',
   SET_ENABLED:      'cmd:setEnabled',
   TRANSLATE_INPUT:  'cmd:translateInput',
   EXPLAIN_SELECTION:'cmd:explainSelection',
+  TRANSLATE_IMAGE:  'cmd:translateImage',
   QUERY_STATE:      'cmd:queryState',
   SETTINGS_CHANGED: 'evt:settingsChanged',
 

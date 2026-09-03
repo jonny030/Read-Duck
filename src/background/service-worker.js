@@ -20,6 +20,7 @@ const MENU = {
   TRANSLATE_SEL: 'readduck-translate-selection',
   SIDE_PANEL: 'readduck-side-panel',
   INPUT: 'readduck-input',
+  IMAGE: 'readduck-image',
   PDF_LINK: 'readduck-pdf-link',
   PDF_PAGE: 'readduck-pdf-page',
 };
@@ -63,6 +64,9 @@ function createMenus() {
       id: MENU.INPUT, title: '翻譯這個輸入框的內容', contexts: ['editable'],
     });
     chrome.contextMenus.create({
+      id: MENU.IMAGE, title: '翻譯圖片中的文字', contexts: ['image'],
+    });
+    chrome.contextMenus.create({
       id: MENU.PDF_LINK,
       title: '用 ReadDuck 翻譯這個 PDF',
       contexts: ['link'],
@@ -99,6 +103,11 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     case MENU.INPUT:
       await sendToTab(tab.id, MSG.TRANSLATE_INPUT);
       break;
+    case MENU.IMAGE:
+      // srcUrl 是選單唯一給得到的線索；content script 那邊還會用按右鍵當下
+      // 記住的元素來決定面板開在哪裡
+      await sendToTab(tab.id, MSG.TRANSLATE_IMAGE, { srcUrl: info.srcUrl });
+      break;
     case MENU.PDF_LINK:
       openPdfViewer(info.linkUrl);
       break;
@@ -108,11 +117,79 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 });
 
+/**
+ * 代 content script 抓圖片。
+ *
+ * 為什麼不讓 content script 自己抓：MV3 的 content script `fetch` 是「代表所在
+ * 網頁的來源」發出的，一樣受網頁的 CORS 限制 —— 擴充功能的 host permissions
+ * 幫不上忙。圖床做防盜連或單純沒給 CORS 標頭的網站（漫畫站幾乎都是）就會被擋。
+ * service worker 才是有 host permissions、不受 CORS 限制的那一邊。
+ *
+ * 回傳 data: URL 而不是 Blob —— chrome.runtime 的訊息會做 JSON 序列化，
+ * Blob 和 ArrayBuffer 都活不過來。
+ */
+const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
+
+async function fetchImage(url) {
+  if (!url) return { error: '沒有圖片網址' };
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+
+    const type = res.headers.get('content-type') ?? '';
+    if (!type.startsWith('image/')) return { error: '這個網址回傳的不是圖片' };
+
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_IMAGE_BYTES) return { error: '圖片太大' };
+    return { dataUrl: `data:${type.split(';')[0]};base64,${toBase64(buf)}` };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+}
+
+/** 分段轉 base64：一次 apply 整個陣列會爆呼叫堆疊。 */
+function toBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  const chunk = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/**
+ * 擷取可見畫面。
+ *
+ * 圖片抓不到時的後路。防盜連（圖床檢查 Referer）、需要登入的圖、以及任何
+ * 我們重新請求就會被拒絕的情況，用這條路都能過 —— 因為擷取的是瀏覽器
+ * **已經畫出來的像素**，不必再向伺服器要一次。
+ *
+ * 代價是解析度只有「顯示尺寸 × devicePixelRatio」，而且只有可見範圍。
+ */
+async function captureTab(tab) {
+  if (!tab?.windowId) return { error: '找不到分頁' };
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    return { dataUrl };
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+}
+
 /* ------------------------------------------------------------ 訊息路由 */
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   switch (msg?.type) {
+    case MSG.FETCH_IMAGE:
+      fetchImage(msg.payload?.url).then(sendResponse, (e) => sendResponse({ error: String(e) }));
+      return true;
+
+    case MSG.CAPTURE_TAB:
+      captureTab(sender.tab).then(sendResponse, (e) => sendResponse({ error: String(e) }));
+      return true;
+
     case MSG.CACHE_GET:
       cache.getMany(msg.payload?.keys ?? []).then(sendResponse, () => sendResponse({}));
       return true;
