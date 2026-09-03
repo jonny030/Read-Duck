@@ -71,11 +71,6 @@ export function planTiles(width, height, { edge = MODEL_IMAGE_EDGE, overlap = OV
   return tiles;
 }
 
-/** 這張圖整張送進模型的話會不會被縮小（用來決定要不要提醒使用者）。 */
-export function wouldDownscale(width, height, edge = MODEL_IMAGE_EDGE) {
-  return width > edge || height > edge;
-}
-
 /**
  * 把 TextDetector 找到的文字區塊合併成群組。
  *
