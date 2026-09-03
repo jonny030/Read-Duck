@@ -25,17 +25,85 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
+/** 模型狀態是整個瀏覽器共用的，不分分頁。 */
 let settings = null;
-let article = null;      // { title, url, text }
-let tabId = null;
-let session = null;      // 問答用的長期 session
-let qaPlan = null;       // 這個 session 的輸出語言規劃
-let modelAvailability = null;  // 語言模型的下載狀態
+let modelAvailability = null;
 let recheckTimer = null;
-/** session.append() 不可用時，正文改成夾在第一個提問前面送出 */
-let pendingContext = null;
-let controller = null;
-let busy = false;
+
+/**
+ * 每個分頁一份狀態。
+ *
+ * 側邊欄只有一個 document，內容跟著作用中的分頁換。但摘要動輒跑數十秒 ——
+ * 使用者切去別的分頁看點東西再切回來，那份工作應該還在跑、或已經跑完等著他。
+ * 所以狀態不能是全域的一份，否則換頁就只能二選一：中止它，或讓它把結果寫到
+ * 錯誤的頁面上。
+ *
+ * Map 的插入順序當成 LRU。每個問答 session 都佔著模型的上下文記憶體，
+ * 不能無限累積。
+ */
+const MAX_STATES = 8;
+const states = new Map();
+let activeId = null;
+
+function newState(id) {
+  return {
+    id,
+    url: null,
+    article: null,          // { title, url, text }
+    /** status: 'idle' | 'running' | 'done' | 'error' */
+    summary: { status: 'idle', progress: null, result: null, error: null },
+    notice: null,           // { kind, text, action }
+    chatEl: null,           // 這個分頁的對話 DOM，切走時整塊留著
+    session: null,          // 問答用的長期 session
+    qaPlan: null,
+    pendingContext: null,
+    controller: null,
+    busy: false,
+    /** 內容作廢時 +1。進行中的工作靠它判斷自己的結果還算不算數。 */
+    generation: 0,
+  };
+}
+
+function stateFor(id) {
+  let st = states.get(id);
+  if (!st) st = newState(id);
+  // 重新插入到尾端，維持 LRU 順序
+  states.delete(id);
+  states.set(id, st);
+  evictOld();
+  return st;
+}
+
+/** 丟掉最久沒用到的分頁狀態。正在跑的和正在顯示的都不動。 */
+function evictOld() {
+  for (const [id, st] of states) {
+    if (states.size <= MAX_STATES) break;
+    if (id === activeId || st.busy) continue;
+    st.session?.destroy?.();
+    states.delete(id);
+  }
+}
+
+function current() { return activeId == null ? null : states.get(activeId) ?? null; }
+function isCurrent(st) { return st != null && st === current(); }
+
+/**
+ * 這個分頁的內容已經不算數了（換了網址、或使用者手動重新讀取）。
+ * 中止進行中的工作並清空狀態，但保留這個分頁在 map 裡。
+ */
+function discard(st) {
+  st.generation++;
+  st.controller?.abort();
+  st.controller = null;
+  st.busy = false;
+  st.summary = { status: 'idle', progress: null, result: null, error: null };
+  st.notice = null;
+  st.chatEl = null;
+  st.session?.destroy?.();
+  st.session = null;
+  st.qaPlan = null;
+  st.pendingContext = null;
+}
 
 init().catch((e) => showNotice('err', `初始化失敗：${e.message}`));
 
@@ -48,12 +116,13 @@ async function init() {
 
   chrome.tabs.onActivated.addListener(() => loadArticle().catch(() => {}));
   chrome.tabs.onUpdated.addListener((id, info) => {
-    if (id === tabId && info.status === 'complete') loadArticle().catch(() => {});
+    if (id === activeId && info.status === 'complete') loadArticle().catch(() => {});
   });
 }
 
 function bind() {
-  $('reload').addEventListener('click', () => loadArticle());
+  // 手動重新讀取是明確的意圖，就算沒換頁也要重跑
+  $('reload').addEventListener('click', () => loadArticle({ force: true }));
   $('summarize').addEventListener('click', () => summarize());
   $('ask').addEventListener('click', () => ask());
   $('resetChat').addEventListener('click', resetSession);
@@ -71,43 +140,120 @@ function bind() {
   });
 }
 
+/* ------------------------------------------------------------ 畫面 */
+
+/**
+ * 把某個分頁的狀態畫到畫面上。
+ *
+ * 所有會動到 DOM 的地方都先問 isCurrent(st) —— 背景分頁的工作跑完時，
+ * 畫面上是別一頁，直接寫進去就會張冠李戴。
+ */
+function render(st) {
+  paintNotice(st.notice);
+  $('chat').replaceChildren(...(st.chatEl ? [st.chatEl] : []));
+  renderSummaryArea(st);
+  updateQuota(st.session);
+}
+
+function renderSummaryArea(st) {
+  const body = $('summaryBody');
+  switch (st.summary.status) {
+    case 'running':
+      body.replaceChildren(progressNode(st.summary.progress ?? '處理中…'));
+      break;
+    case 'done':
+      renderSummary(st.summary.result);
+      break;
+    case 'error':
+      body.replaceChildren();
+      showSummaryError(st.summary.error);
+      break;
+    default:
+      renderIdle(st);
+  }
+  updateButtons(st);
+}
+
+function updateButtons(st) {
+  const canRun = !!st.article && modelAvailability !== 'unavailable';
+  $('summarize').disabled = !canRun || st.busy;
+  $('ask').disabled = !canRun || st.busy;
+  $('summarize').textContent = st.summary.status === 'done' ? '重新產生' : '產生摘要';
+}
+
+function progressNode(text) {
+  const p = document.createElement('p');
+  p.className = 'small muted';
+  const spinner = document.createElement('span');
+  spinner.className = 'spinner';
+  p.append(spinner, ' ' + text);
+  return p;
+}
+
+/** 記下進度並且只在這個分頁還顯示著的時候更新畫面。 */
+function setProgress(st, text) {
+  st.summary.progress = text;
+  if (isCurrent(st)) $('summaryBody').replaceChildren(progressNode(text));
+}
+
 /* ---------------------------------------------------------- 取得正文 */
 
-async function loadArticle() {
+/* ---------------------------------------------------------- 取得正文 */
+
+async function loadArticle({ force = false } = {}) {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) return;
-  tabId = tab.id;
+
+  const url = tab.url ?? '';
+  const switched = tab.id !== activeId;
+  const st = stateFor(tab.id);
+  activeId = tab.id;
 
   $('pageTitle').textContent = tab.title || '—';
   $('pageUrl').textContent = tab.url || '';
 
+  // 剛切過來：先把這個分頁既有的狀態畫出來。摘要可能還在背景跑，
+  // 也可能早就跑完在等他 —— 兩種都要立刻看得到。
+  if (switched) render(st);
+
+  // 同一個分頁、同一個網址、正文也還在 → 沒事可做。
+  // onActivated 對**任何視窗**的分頁切換都會觸發，這道防線讓那些噪音變成 no-op。
+  if (!force && st.article && st.url === url) return;
+
+  // 同一個分頁換了網址（或使用者按了重新讀取）：舊的摘要與對話對不上新內容了
+  if (st.url !== null && (st.url !== url || force)) discard(st);
+
+  st.url = url;
+  const gen = st.generation;
+
   const res = await sendToTab(tab.id, MSG.EXTRACT_ARTICLE);
+  // 抽取期間又換頁 / 內容作廢了就不要再寫回去
+  if (gen !== st.generation) return;
 
   if (!res?.text) {
-    article = null;
-    $('summarize').disabled = true;
+    st.article = null;
 
     // PDF 不做摘要。這裡要講清楚是「不支援」而不是「讀不到」——
     // 後者會讓人以為重新整理或換個開法就有救。
     if (await isPdfTab(tab)) {
-      showNotice('warn',
+      if (gen !== st.generation) return;
+      setNotice(st, 'warn',
         'PDF 不支援摘要與問答。\n'
         + 'ReadDuck 的 PDF 檢視器仍然可以做雙語對照翻譯。');
-      return;
+    } else {
+      // PDF 也可能落到這裡 —— tabs.query() 對自己的檢視器分頁不一定給得出 url，
+      // isPdfTab() 就認不出來。所以這則訊息也要把 PDF 列進去。
+      setNotice(st, 'warn',
+        '讀不到這個頁面的內容。可能是尚未載入 ReadDuck（重新整理即可）、'
+        + '這是瀏覽器內部頁面，或這是 PDF —— PDF 不支援摘要。');
     }
-
-    // PDF 也可能落到這裡 —— tabs.query() 對自己的檢視器分頁不一定給得出 url，
-    // isPdfTab() 就認不出來。所以這則訊息也要把 PDF 列進去。
-    showNotice('warn',
-      '讀不到這個頁面的內容。可能是尚未載入 ReadDuck（重新整理即可）、'
-      + '這是瀏覽器內部頁面，或這是 PDF —— PDF 不支援摘要。');
+    if (isCurrent(st)) { renderSummaryArea(st); }
     return;
   }
-  hideNotice();
-  article = res;
-  $('summarize').textContent = '產生摘要';
-  resetSession();
-  renderIdle();
+
+  clearNotice(st);
+  st.article = res;
+  if (isCurrent(st)) renderSummaryArea(st);
 }
 
 /**
@@ -158,7 +304,8 @@ async function refreshModelState() {
   if (modelAvailability === 'downloading') {
     recheckTimer = setTimeout(() => refreshModelState(), 5000);
   }
-  renderIdle();
+  const st = current();
+  if (st) renderSummaryArea(st);
 }
 
 /** 這個分頁目前該讓模型用哪種語言輸出。availability 與 create 都需要它。 */
@@ -167,22 +314,17 @@ function currentModelLanguage() {
 }
 
 /** 還沒開始摘要時的畫面：正文統計 + 模型狀態。 */
-function renderIdle() {
+function renderIdle(st) {
   const body = $('summaryBody');
-  if (busy) return;
   body.innerHTML = '';
 
-  if (article) {
+  if (st.article) {
     const p = document.createElement('p');
     p.className = 'small muted';
-    p.textContent = `已讀取 ${article.text.length.toLocaleString()} 個字元，`
-      + `約 ${estimateTokens(article.text).toLocaleString()} tokens。`;
+    p.textContent = `已讀取 ${st.article.text.length.toLocaleString()} 個字元，`
+      + `約 ${estimateTokens(st.article.text).toLocaleString()} tokens。`;
     body.appendChild(p);
   }
-
-  const canRun = !!article && modelAvailability !== 'unavailable';
-  $('summarize').disabled = !canRun;
-  $('ask').disabled = !canRun;
 
   switch (modelAvailability) {
     case 'available':
@@ -270,65 +412,76 @@ async function downloadModel(container) {
 /* ------------------------------------------------------------ 摘要 */
 
 async function summarize() {
-  if (!article || busy) return;
+  const st = current();
+  if (!st?.article || st.busy) return;
+
   const gate = await ensureModel();
   if (!gate) return;
-
-  const body = $('summaryBody');
 
   // 側邊欄開啟時就查過了，這裡再確認一次 —— 狀態可能在這段時間內變了
   // （例如使用者剛剛在別的分頁下載完）。
   if (await needsDownloadConsent(currentModelLanguage())) {
-    const agreed = await confirmDownload(body);
+    const agreed = await confirmDownload($('summaryBody'));
     if (!agreed) { await refreshModelState(); return; }
-    await downloadModel(body);
+    await downloadModel($('summaryBody'));
     if (modelAvailability !== 'available') return;
   }
 
-  busy = true;
-  $('summarize').disabled = true;
-  controller?.abort();
-  controller = new AbortController();
-  const { signal } = controller;
+  // 這次摘要的素材與世代先固定下來。底下每一個 await 之間都可能換頁或換網址，
+  // 之後一律用 target，不要再讀 st.article —— 否則標題和正文會來自不同頁。
+  const target = st.article;
+  const gen = st.generation;
 
-  body.innerHTML = '<p class="small muted"><span class="spinner"></span> 閱讀中…</p>';
+  st.busy = true;
+  st.controller?.abort();
+  st.controller = new AbortController();
+  const { signal } = st.controller;
+
+  st.summary = { status: 'running', progress: '閱讀中…', result: null, error: null };
+  if (isCurrent(st)) renderSummaryArea(st);
 
   try {
     const plan = planOutputLanguage(settings.targetLanguage);
-    const s = await createSession({
-      systemPrompt: summarySystemPrompt(plan.modelLanguage),
+    const config = {
+      systemPrompt: summarySystemPrompt(plan.modelLanguage, settings.customPrompts),
       mode: 'balanced',
       outputLanguage: plan.modelLanguage,
+    };
+    const s = await createSession({
+      ...config,
       signal,
-      onDownloadProgress: (l) => {
-        body.innerHTML = `<p class="small muted"><span class="spinner"></span> 正在下載裝置端語言模型（只需下載一次）… ${Math.round(l * 100)}%</p>`;
-      },
+      onDownloadProgress: (l) => setProgress(st,
+        `正在下載裝置端語言模型（只需下載一次）… ${Math.round(l * 100)}%`),
     });
 
     const { total } = usage(s);
     // 留一半空間給 system prompt、輸出與後續追問
     const budget = Math.max(1024, Math.floor((total || 4096) * 0.5));
-    let source = article.text;
+    let source = target.text;
 
     if (estimateTokens(source) > budget) {
-      source = await mapReduce(article.text, budget, plan, signal, (i, n) => {
-        body.innerHTML = `<p class="small muted"><span class="spinner"></span> 文章較長，分段閱讀中… ${i}/${n}</p>`;
+      source = await mapReduce(target.text, budget, plan, signal, (i, n) => {
+        setProgress(st, `文章較長，分段閱讀中… ${i}/${n}`);
       });
     }
 
-    const input = `標題：${article.title}\n\n正文：\n${source}`;
+    const input = `標題：${target.title}\n\n正文：\n${source}`;
     const result = await promptJson(s, input, SUMMARY_SCHEMA, { signal });
     s.destroy?.();
 
-    renderSummary(await localizeSummary(result, plan, signal));
+    const localized = await localizeSummary(result, plan, signal);
+    // 跑完才發現這份內容已經作廢（換了網址或手動重讀）
+    if (gen !== st.generation) return;
+    st.summary = { status: 'done', progress: null, result: localized, error: null };
   } catch (err) {
-    if (err?.name === 'AbortError') return;
-    body.innerHTML = '';
-    showSummaryError(err);
+    if (err?.name === 'AbortError' || gen !== st.generation) return;
+    st.summary = { status: 'error', progress: null, result: null, error: err };
   } finally {
-    busy = false;
-    $('summarize').disabled = !article;
-    $('summarize').textContent = '重新產生';
+    if (gen === st.generation) {
+      st.busy = false;
+      // 使用者可能已經切到別的分頁了 —— 那就只更新狀態，畫面留給那一頁
+      if (isCurrent(st)) renderSummaryArea(st);
+    }
   }
 }
 
@@ -341,7 +494,7 @@ async function mapReduce(text, budget, plan, signal, onProgress) {
   // 保持在模型的原生輸出語言比較準，也省掉一輪翻譯。
   // 分支降級時要靠同一份設定重建，所以先留著
   const config = {
-    systemPrompt: chunkSummarySystemPrompt(plan.modelLanguage),
+    systemPrompt: chunkSummarySystemPrompt(plan.modelLanguage, settings.customPrompts),
     mode: 'precise',
     outputLanguage: plan.modelLanguage,
   };
@@ -450,16 +603,17 @@ function showSummaryError(err) {
 async function ask() {
   const box = $('question');
   const question = box.value.trim();
-  if (!question || busy) return;
-  if (!article) { showNotice('warn', '還沒讀到頁面內容。'); return; }
+  const st = current();
+  if (!question || !st || st.busy) return;
+  if (!st.article) { showNotice('warn', '還沒讀到頁面內容。'); return; }
 
   const gate = await ensureModel();
   if (!gate) return;
 
-  if (!session && await needsDownloadConsent(currentModelLanguage())) {
+  if (!st.session && await needsDownloadConsent(currentModelLanguage())) {
     const holder = document.createElement('div');
     holder.className = 'card';
-    $('chat').appendChild(holder);
+    chatOf(st).appendChild(holder);
     $('scroll').scrollTop = $('scroll').scrollHeight;
     const agreed = await confirmDownload(holder);
     if (!agreed) { holder.remove(); await refreshModelState(); return; }
@@ -470,85 +624,103 @@ async function ask() {
 
   box.value = '';
   box.style.height = 'auto';
-  appendMessage('user', question);
+  appendMessage(st, 'user', question);
 
-  const bubble = appendMessage('assistant', '');
-  busy = true;
-  $('ask').disabled = true;
-  controller?.abort();
-  controller = new AbortController();
+  const bubble = appendMessage(st, 'assistant', '');
+  const gen = st.generation;
+  st.busy = true;
+  if (isCurrent(st)) updateButtons(st);
+  st.controller?.abort();
+  st.controller = new AbortController();
 
   try {
-    if (!session) session = await createQaSession(controller.signal);
+    if (!st.session) st.session = await createQaSession(st, st.controller.signal);
 
     // append() 不可用時，把正文夾在第一個提問前面（只做一次）
-    const input = pendingContext ? `${pendingContext}\n\nQuestion: ${question}` : question;
-    pendingContext = null;
+    const input = st.pendingContext ? `${st.pendingContext}\n\nQuestion: ${question}` : question;
+    st.pendingContext = null;
 
-    await promptLocalized(session, input, {
-      plan: qaPlan,
-      signal: controller.signal,
+    await promptLocalized(st.session, input, {
+      plan: st.qaPlan,
+      signal: st.controller.signal,
       onChunk: (partial) => bubble.setText(partial, true),
     });
     bubble.commit();
-    updateQuota();
+    if (isCurrent(st)) updateQuota(st.session);
   } catch (err) {
     if (err?.name === 'AbortError') { bubble.commit(); return; }
+    // 對話已經作廢（換了網址）：這顆泡泡不在任何畫面上了
+    if (gen !== st.generation) return;
     if (isQuotaError(err)) {
       bubble.setError(`對話已經超出模型的上下文長度（需要 ${err.requested}，上限 ${err.contextWindow}）。請按「重設對話」重新開始。`);
     } else {
-      bubble.setError(`發生錯誤：${err?.message || err}`);
+      bubble.setError(`發生錯誤：${explainModelError(err)}`);
     }
   } finally {
-    busy = false;
-    $('ask').disabled = false;
+    if (gen === st.generation) {
+      st.busy = false;
+      if (isCurrent(st)) updateButtons(st);
+    }
   }
 }
 
-async function createQaSession(signal) {
-  qaPlan = planOutputLanguage(settings.targetLanguage);
+async function createQaSession(st, signal) {
+  st.qaPlan = planOutputLanguage(settings.targetLanguage);
   const s = await createSession({
-    systemPrompt: qaSystemPrompt(qaPlan.modelLanguage),
+    systemPrompt: qaSystemPrompt(st.qaPlan.modelLanguage, settings.customPrompts),
     mode: 'balanced',
-    outputLanguage: qaPlan.modelLanguage,
+    outputLanguage: st.qaPlan.modelLanguage,
     signal,
   });
 
   const { total } = usage(s);
   const budget = Math.max(1024, Math.floor((total || 4096) * 0.55));
-  let text = article.text;
+  let text = st.article.text;
   if (estimateTokens(text) > budget) {
     // 問答不像摘要可以慢慢分段，這裡直接截斷並告知使用者
     const chunks = chunkText(text, budget);
     text = chunks[0];
-    showNotice('warn', '文章較長，問答只涵蓋前半部內容。需要完整內容請先產生摘要。');
+    setNotice(st, 'warn', '文章較長，問答只涵蓋前半部內容。需要完整內容請先產生摘要。');
   }
   const context =
     'Here is the article. Answer all following questions from it. '
     + 'Questions may be written in any language; always answer in the language you were instructed to use.'
-    + `\n\nTitle: ${article.title}\n\n${text}`;
+    + `\n\nTitle: ${st.article.title}\n\n${text}`;
   // append() 把正文放進上下文但不觸發生成，是最省事的做法；
   // 舊版瀏覽器沒有這個方法，退回「夾在第一個提問前面」。
   if (typeof s.append === 'function') {
     await s.append([{ role: 'user', content: context }]);
-    pendingContext = null;
+    st.pendingContext = null;
   } else {
-    pendingContext = context;
+    st.pendingContext = context;
   }
-  updateQuota(s);
+  if (isCurrent(st)) updateQuota(s);
   return s;
 }
 
-function resetSession() {
-  session?.destroy?.();
-  session = null;
-  qaPlan = null;
-  pendingContext = null;
-  $('chat').innerHTML = '';
-  $('quota').hidden = true;
+/** 這個分頁的對話容器。它可以是脫離文件的 —— 串流中的泡泡照樣寫得進去。 */
+function chatOf(st) {
+  if (!st.chatEl) {
+    st.chatEl = document.createElement('div');
+    if (isCurrent(st)) $('chat').replaceChildren(st.chatEl);
+  }
+  return st.chatEl;
 }
 
-function updateQuota(s = session) {
+function resetSession(st = current()) {
+  if (!st) return;
+  st.session?.destroy?.();
+  st.session = null;
+  st.qaPlan = null;
+  st.pendingContext = null;
+  st.chatEl = null;
+  if (isCurrent(st)) {
+    $('chat').replaceChildren();
+    $('quota').hidden = true;
+  }
+}
+
+function updateQuota(s) {
   if (!s) { $('quota').hidden = true; return; }
   const { used, total, ratio } = usage(s);
   if (!total) { $('quota').hidden = true; return; }
@@ -558,8 +730,8 @@ function updateQuota(s = session) {
 
 /* ------------------------------------------------------------ 共用 */
 
-function appendMessage(who, text) {
-  const chat = $('chat');
+function appendMessage(st, who, text) {
+  const chat = chatOf(st);
   const el = document.createElement('div');
   el.className = `msg ${who}`;
   const label = document.createElement('div');
@@ -648,8 +820,34 @@ async function ensureModel() {
   return true;
 }
 
+/** 訊息也是每個分頁一份 —— 換頁時不該看到上一頁的警告。 */
+function setNotice(st, kind, text, action) {
+  st.notice = { kind, text, action };
+  if (isCurrent(st)) paintNotice(st.notice);
+}
+
+function clearNotice(st) {
+  st.notice = null;
+  if (isCurrent(st)) paintNotice(null);
+}
+
+/** 沒有 state 在手上的呼叫端用這兩個，作用在目前顯示的分頁。 */
 function showNotice(kind, text, action) {
+  const st = current();
+  if (st) return setNotice(st, kind, text, action);
+  paintNotice({ kind, text, action });
+}
+
+function hideNotice() {
+  const st = current();
+  if (st) return clearNotice(st);
+  paintNotice(null);
+}
+
+function paintNotice(notice) {
   const el = $('notice');
+  if (!notice) { el.hidden = true; return; }
+  const { kind, text, action } = notice;
   el.className = `notice ${kind}`;
   el.textContent = text;
 
@@ -666,5 +864,3 @@ function showNotice(kind, text, action) {
   }
   el.hidden = false;
 }
-
-function hideNotice() { $('notice').hidden = true; }
