@@ -3,6 +3,7 @@ import { getSettings, setSettings, hostnameOf, domainListMatches } from '../lib/
 import { SUPPORTED_LANGUAGES, languageName } from '../ai/languages.js';
 import { checkAvailability } from '../ai/translator-pool.js';
 import { explainUnavailable } from '../ai/capability.js';
+import { initTheme } from '../lib/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,6 +14,7 @@ let state = null;
 init().catch((err) => showNotice('err', `初始化失敗：${err.message}`));
 
 async function init() {
+  initTheme();
   settings = await getSettings();
   [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 

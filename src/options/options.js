@@ -2,11 +2,13 @@ import { getSettings, setSettings, resetSettings, DEFAULTS } from '../lib/settin
 import { SUPPORTED_LANGUAGES } from '../ai/languages.js';
 import { MSG, send } from '../lib/messaging.js';
 import { PROMPTS, MAX_PROMPT_LENGTH, respondInLine } from '../ai/prompts.js';
+import { initTheme, applyTheme, THEMES, THEME_LABELS } from '../lib/theme.js';
 
 const $ = (id) => document.getElementById(id);
 
 /** id -> 讀寫方式。集中定義才不會漏掉某個欄位的存檔。 */
 const FIELDS = {
+  theme:                { kind: 'value' },
   targetLanguage:       { kind: 'value' },
   inputTargetLanguage:  { kind: 'value' },
   translationStyle:     { kind: 'value' },
@@ -25,6 +27,14 @@ let settings = null;
 init();
 
 async function init() {
+  initTheme();
+  for (const value of THEMES) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = THEME_LABELS[value];
+    $('theme').appendChild(opt);
+  }
+
   for (const id of ['targetLanguage', 'inputTargetLanguage']) {
     for (const [tag, name] of SUPPORTED_LANGUAGES) {
       const opt = document.createElement('option');
@@ -43,6 +53,9 @@ async function init() {
     const el = $(id);
     const event = def.kind === 'lines' ? 'input' : 'change';
     el.addEventListener(event, () => save(id, def));
+    // initTheme() 註冊的監聽器也會收到這次變更，但那要等 storage 寫入round-trip
+    // 回來。這裡直接套一次，切換才是即時的。applyTheme() 可重複呼叫。
+    if (id === 'theme') el.addEventListener('change', () => applyTheme(el.value));
     if (el.type === 'range') el.addEventListener('input', syncLabels);
     if (id === 'translationStyle') el.addEventListener('change', syncLabels);
   }
@@ -66,6 +79,8 @@ async function init() {
     await resetSettings();
     settings = { ...DEFAULTS };
     for (const [id, def] of Object.entries(FIELDS)) write(id, def, settings[id]);
+    applyTheme(settings.theme);
+    buildPromptEditors();
     syncLabels();
     flash('已回復預設值');
   });

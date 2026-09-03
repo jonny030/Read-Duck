@@ -76,14 +76,28 @@ export const PANEL_CSS = `
   --rd-shadow: 0 8px 28px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .08);
   font-family: system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif;
 }
+/*
+ * 主題三態。這裡是注入到網頁裡的 Shadow DOM，讀不到擴充功能頁面的
+ * <html data-theme>，所以由 ui.setTheme() 把屬性掛在 shadow host 上。
+ *
+ * 媒體查詢的 :not([data-theme="light"]) 是關鍵：少了它，系統是深色時
+ * 使用者選淺色會沒有反應。tests/browser/run.mjs 會模擬系統深色驗證這件事。
+ */
 @media (prefers-color-scheme: dark) {
-  :host {
+  :host(:not([data-theme="light"])) {
     --rd-bg: #1f2937;
     --rd-fg: #f1f5f9;
     --rd-muted: #94a3b8;
     --rd-border: rgba(255, 255, 255, .14);
     --rd-shadow: 0 8px 28px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
   }
+}
+:host([data-theme="dark"]) {
+  --rd-bg: #1f2937;
+  --rd-fg: #f1f5f9;
+  --rd-muted: #94a3b8;
+  --rd-border: rgba(255, 255, 255, .14);
+  --rd-shadow: 0 8px 28px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
 }
 * { box-sizing: border-box; }
 

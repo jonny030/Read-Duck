@@ -1,5 +1,6 @@
 import { MSG, sendToTab } from '../lib/messaging.js';
 import { getSettings } from '../lib/settings.js';
+import { initTheme } from '../lib/theme.js';
 import {
   createSession, forkSession, planOutputLanguage, promptJson, usage,
   estimateTokens, chunkText, isLanguageModelPresent, checkAvailability, isQuotaError,
@@ -108,6 +109,7 @@ function discard(st) {
 init().catch((e) => showNotice('err', `初始化失敗：${e.message}`));
 
 async function init() {
+  initTheme();
   settings = await getSettings();
   bind();
   // 側邊欄一打開就先確認語言模型在不在，讓使用者在按下任何按鈕之前

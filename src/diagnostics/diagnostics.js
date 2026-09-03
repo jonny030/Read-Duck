@@ -1,6 +1,7 @@
 import { MSG, send, sendToTab } from '../lib/messaging.js';
 import { probe, API_NAMES, explainUnavailable, explainModelError } from '../ai/capability.js';
 import { getSettings } from '../lib/settings.js';
+import { initTheme } from '../lib/theme.js';
 import { SUPPORTED_LANGUAGES, languageName } from '../ai/languages.js';
 import { translateText, checkAvailability } from '../ai/translator-pool.js';
 import { getParams, planOutputLanguage, promptOutputLanguages } from '../ai/language-model.js';
@@ -29,6 +30,7 @@ let results = {};
 init();
 
 async function init() {
+  initTheme();
   settings = await getSettings();
   for (const [tag, name] of SUPPORTED_LANGUAGES) {
     const o = document.createElement('option');

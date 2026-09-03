@@ -6,6 +6,21 @@ import { PANEL_CSS } from './styles.js';
  */
 
 let root = null;
+/** 'system' | 'light' | 'dark'。由 main.js 依設定餵進來。 */
+let theme = 'system';
+
+/**
+ * 設定浮動 UI 的深淺色。
+ *
+ * 這裡的 UI 在 Shadow DOM 裡，看不到擴充功能頁面的 <html data-theme>，
+ * 所以把屬性掛在 shadow host 上，由 styles.js 的 :host([data-theme]) 接手。
+ */
+export function setTheme(next) {
+  theme = next === 'light' || next === 'dark' ? next : 'system';
+  if (!root) return;
+  if (theme === 'system') root.host.removeAttribute('data-theme');
+  else root.host.setAttribute('data-theme', theme);
+}
 
 function ensureRoot() {
   if (root?.host.isConnected) return root;
@@ -17,6 +32,7 @@ function ensureRoot() {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(PANEL_CSS);
   shadow.adoptedStyleSheets = [sheet];
+  if (theme !== 'system') host.setAttribute('data-theme', theme);
   (document.documentElement || document.body).appendChild(host);
   root = { host, shadow };
   return root;

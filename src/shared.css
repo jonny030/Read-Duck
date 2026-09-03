@@ -1,4 +1,15 @@
 /* popup / options / side panel / diagnostics 共用樣式 */
+
+/*
+ * 主題有三種狀態：跟隨系統（沒有 data-theme）、明確淺色、明確深色。
+ * 深色的樣式因此要寫兩次 —— 一次給「系統是深色」，一次給「使用者選了深色」。
+ *
+ * 關鍵是媒體查詢裡的 :not([data-theme="light"])：少了它，系統是深色時
+ * 使用者選淺色會沒有反應（媒體查詢照樣套上深色）。兩條規則的特異度相同，
+ * 光靠排列順序救不回來，一定要用這個守衛把明確選淺色的情況排除掉。
+ *
+ * data-theme 由 lib/theme-boot.js 在頁面繪製前同步掛上。
+ */
 :root {
   --bg: #ffffff;
   --panel: #f8fafc;
@@ -13,8 +24,9 @@
   --radius: 10px;
   color-scheme: light dark;
 }
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111827;
     --panel: #1b2433;
     --fg: #f3f4f6;
@@ -22,6 +34,19 @@
     --border: #2b3646;
     --accent-soft: rgba(245, 158, 11, .18);
   }
+}
+
+/* 明確選了淺色：只要把 color-scheme 釘住，捲軸與表單控制項才不會還是深色 */
+:root[data-theme="light"] { color-scheme: light; }
+
+:root[data-theme="dark"] {
+  --bg: #111827;
+  --panel: #1b2433;
+  --fg: #f3f4f6;
+  --muted: #9ca3af;
+  --border: #2b3646;
+  --accent-soft: rgba(245, 158, 11, .18);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

@@ -24,6 +24,7 @@ let ready = false;
 
 async function boot() {
   settings = await getSettings();
+  ui.setTheme(settings.theme);
 
   const host = hostnameOf(location.href);
   if (domainListMatches(settings.neverTranslateDomains, host)) {
@@ -107,6 +108,7 @@ function onPdfMessage(msg, _sender, sendResponse) {
 
 function applySettings(patch) {
   settings = { ...settings, ...patch };
+  if ('theme' in patch) ui.setTheme(patch.theme);
   translator?.updateSettings(patch);
   selection.updateSettings(patch);
   inputTranslate.updateSettings(patch);

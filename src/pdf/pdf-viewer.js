@@ -1,6 +1,7 @@
 import * as pdfjsLib from '../../vendor/pdfjs/pdf.min.mjs';
 import { groupParagraphs } from './extract.js';
 import { getSettings } from '../lib/settings.js';
+import { initTheme } from '../lib/theme.js';
 import {
   translateText, checkAvailability,
   NeedsUserActivationError, TranslatorUnavailableError,
@@ -54,7 +55,10 @@ let warned = new Set();
 init().catch((err) => showNotice('err', `初始化失敗：${err.message}`));
 
 async function init() {
+  initTheme();
   settings = await getSettings();
+  // 檢視器的浮動鴨子和網頁上是同一套 Shadow DOM UI，主題要另外餵給它
+  ui.setTheme(settings.theme);
   queue = new TaskQueue(settings.concurrency);
   setMode(mode);
   bindUi();

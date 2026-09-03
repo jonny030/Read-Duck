@@ -18,6 +18,8 @@ export const DEFAULTS = Object.freeze({
   /** 短於這個長度的段落不翻 */
   minTextLength: 4,
   cacheEnabled: true,
+  /** 'system' 跟隨作業系統，或明確指定 'light' / 'dark'。見 lib/theme.js */
+  theme: 'system',
   /** 譯文字級相對原文的比例 */
   translationFontScale: 1,
   /**
