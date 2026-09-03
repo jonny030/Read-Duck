@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "__MSG_extName__",
   "description": "__MSG_extDesc__",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "default_locale": "zh_TW",
   "minimum_chrome_version": "138",
 
