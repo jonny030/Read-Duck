@@ -82,31 +82,70 @@ function createMenus() {
   });
 }
 
+/**
+ * 送訊息給分頁；沒有人接就告訴使用者要重新整理。
+ *
+ * 重新載入擴充功能之後，已經開著的分頁還跑著舊的 content script，它跟新的
+ * service worker 已經斷了連線。sendToTab() 會把 lastError 吞掉並回 null，
+ * 於是右鍵選單按下去**完全沒有反應** —— 連錯誤都看不到，使用者只會覺得壞了。
+ *
+ * 不能重新注入了事：boot.js 有 window.__readduckBooted 這道防重複注入的守衛，
+ * 而那個旗標還留在同一個 isolated world 裡，注入進去也會直接 return。
+ * 所以改成注入一支自足的函式，在頁面上講清楚要重新整理。
+ */
+async function sendToTabOrExplain(tabId, type, payload) {
+  const res = await sendToTab(tabId, type, payload);
+  if (res != null) return res;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: showReloadHint });
+  } catch {
+    // chrome:// 這類頁面本來就注入不了，也本來就不支援
+  }
+  return null;
+}
+
+/** 注入到頁面裡執行，所以不能參照這支檔案裡的任何東西。 */
+function showReloadHint() {
+  const id = 'readduck-reload-hint';
+  if (document.getElementById(id)) return;
+  const el = document.createElement('div');
+  el.id = id;
+  el.textContent = 'ReadDuck 更新過了，請重新整理這個分頁後再試一次。';
+  el.style.cssText = [
+    'position:fixed', 'z-index:2147483647', 'top:16px', 'left:50%',
+    'transform:translateX(-50%)', 'padding:10px 16px', 'border-radius:10px',
+    'background:#111827', 'color:#f8fafc', 'font:600 13px/1.5 system-ui,sans-serif',
+    'box-shadow:0 8px 28px rgba(0,0,0,.35)', 'pointer-events:none',
+  ].join(';');
+  document.documentElement.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab?.id) return;
   switch (info.menuItemId) {
     case MENU.TOGGLE:
-      await sendToTab(tab.id, MSG.TOGGLE);
+      await sendToTabOrExplain(tab.id, MSG.TOGGLE);
       break;
     case MENU.TRANSLATE_SEL:
-      await sendToTab(tab.id, MSG.EXPLAIN_SELECTION, { action: 'translate' });
+      await sendToTabOrExplain(tab.id, MSG.EXPLAIN_SELECTION, { action: 'translate' });
       break;
     case MENU.EXPLAIN:
-      await sendToTab(tab.id, MSG.EXPLAIN_SELECTION, { action: 'explain' });
+      await sendToTabOrExplain(tab.id, MSG.EXPLAIN_SELECTION, { action: 'explain' });
       break;
     case MENU.SIMPLIFY:
-      await sendToTab(tab.id, MSG.EXPLAIN_SELECTION, { action: 'simplify' });
+      await sendToTabOrExplain(tab.id, MSG.EXPLAIN_SELECTION, { action: 'simplify' });
       break;
     case MENU.SIDE_PANEL:
       await openSidePanel(tab);
       break;
     case MENU.INPUT:
-      await sendToTab(tab.id, MSG.TRANSLATE_INPUT);
+      await sendToTabOrExplain(tab.id, MSG.TRANSLATE_INPUT);
       break;
     case MENU.IMAGE:
       // srcUrl 是選單唯一給得到的線索；content script 那邊還會用按右鍵當下
       // 記住的元素來決定面板開在哪裡
-      await sendToTab(tab.id, MSG.TRANSLATE_IMAGE, { srcUrl: info.srcUrl });
+      await sendToTabOrExplain(tab.id, MSG.TRANSLATE_IMAGE, { srcUrl: info.srcUrl });
       break;
     case MENU.PDF_LINK:
       openPdfViewer(info.linkUrl);
