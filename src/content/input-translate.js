@@ -25,8 +25,10 @@ let busy = false;
 export function init(cfg) { settings = cfg; }
 export function updateSettings(patch) {
   const langChanged = patch.inputTargetLanguage && patch.inputTargetLanguage !== settings?.inputTargetLanguage;
+  // 同 selection.js：提示詞改了就得重建，否則舊 session 還帶著舊的 system prompt
+  const promptsChanged = 'customPrompts' in patch;
   settings = { ...settings, ...patch };
-  if (langChanged) { session?.destroy?.(); session = null; }
+  if (langChanged || promptsChanged) { session?.destroy?.(); session = null; }
 }
 export function destroy() { session?.destroy?.(); session = null; }
 

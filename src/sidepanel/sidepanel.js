@@ -1,5 +1,5 @@
 import { MSG, sendToTab } from '../lib/messaging.js';
-import { getSettings } from '../lib/settings.js';
+import { getSettings, onSettingsChanged } from '../lib/settings.js';
 import { initTheme } from '../lib/theme.js';
 import {
   createSession, forkSession, planOutputLanguage, promptJson, usage,
@@ -115,6 +115,23 @@ async function init() {
   // 側邊欄一打開就先確認語言模型在不在，讓使用者在按下任何按鈕之前
   // 就知道狀態，而不是按了「產生摘要」才發現要下載數 GB。
   await Promise.all([loadArticle(), refreshModelState()]);
+
+  // 側邊欄原本完全不理設定變更，settings 是開啟當下的快照 —— 在設定頁改了
+  // 目標語言或提示詞，這裡要重開才會生效，看起來像「改了沒有用」。
+  onSettingsChanged((patch) => {
+    const before = settings;
+    settings = { ...settings, ...patch };
+
+    // 問答 session 的 system prompt 在建立時就固定了，改了就得重建。
+    // 但只有 qa 那則和輸出語言會影響它 —— 改別則提示詞不該把使用者的對話清掉。
+    const qaChanged = 'customPrompts' in patch
+      && before.customPrompts?.qa !== settings.customPrompts?.qa;
+    if (qaChanged || 'targetLanguage' in patch) {
+      for (const st of states.values()) resetSession(st);
+    }
+    // 換了目標語言連帶換了模型的輸出語言，可用性要重查
+    if ('targetLanguage' in patch) refreshModelState();
+  });
 
   chrome.tabs.onActivated.addListener(() => loadArticle().catch(() => {}));
   chrome.tabs.onUpdated.addListener((id, info) => {

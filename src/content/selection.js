@@ -47,9 +47,11 @@ export function init(cfg) {
 
 export function updateSettings(patch) {
   const langChanged = patch.targetLanguage && patch.targetLanguage !== settings?.targetLanguage;
+  // system prompt 是建 session 時就固定進去的 —— 使用者在設定頁改了提示詞，
+  // 不重建的話舊 session 會一直用舊的那份，看起來像「改了沒有用」
+  const promptsChanged = 'customPrompts' in patch;
   settings = { ...settings, ...patch };
-  // system prompt 裡寫死了輸出語言，語言換了就得重建 session
-  if (langChanged) destroySessions();
+  if (langChanged || promptsChanged) destroySessions();
 }
 
 function destroySessions() {
