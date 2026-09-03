@@ -95,6 +95,21 @@
   </section>
 
   <section class="card stack">
+    <h2>提示詞</h2>
+    <p class="small muted">
+      這些是送給語言模型的 system prompt。改了立刻生效，可以逐條調整成你要的風格與詳略。
+      <br>
+      <strong>請用英文撰寫</strong> —— 模型保證的輸出語言不含中文，ReadDuck 走的是
+      「模型用英文輸出 → 翻譯模型轉成你的目標語言」。用中文寫指示反而容易讓模型混淆。
+      <br>
+      框裡就是目前實際在用的內容，直接改。每則的最後會自動補上「用哪種語言回答」那一行
+      （欄位底下有寫），不需要也不應該自己加。要在文字中提到目標語言時用 <code>{language}</code>。
+    </p>
+    <div class="stack" id="prompts"></div>
+    <div class="row"><button class="danger" id="resetPrompts">全部回復內建提示詞</button></div>
+  </section>
+
+  <section class="card stack">
     <h2>其他</h2>
     <div class="row" style="gap:8px; flex-wrap:wrap">
       <button id="diagnostics">內建 AI 診斷</button>

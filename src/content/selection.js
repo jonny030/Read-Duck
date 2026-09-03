@@ -264,8 +264,8 @@ async function runPrompt(action, text, panel, signal) {
 async function getBranch(action, plan, panel, signal) {
   const config = {
     systemPrompt: action === 'explain'
-      ? explainSystemPrompt(plan.modelLanguage)
-      : simplifySystemPrompt(plan.modelLanguage),
+      ? explainSystemPrompt(plan.modelLanguage, settings.customPrompts)
+      : simplifySystemPrompt(plan.modelLanguage, settings.customPrompts),
     mode: action === 'explain' ? 'balanced' : 'precise',
     outputLanguage: plan.modelLanguage,
   };

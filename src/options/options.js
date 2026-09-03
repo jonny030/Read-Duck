@@ -1,6 +1,7 @@
 import { getSettings, setSettings, resetSettings, DEFAULTS } from '../lib/settings.js';
 import { SUPPORTED_LANGUAGES } from '../ai/languages.js';
 import { MSG, send } from '../lib/messaging.js';
+import { PROMPTS, MAX_PROMPT_LENGTH, respondInLine } from '../ai/prompts.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -35,6 +36,7 @@ async function init() {
 
   settings = await getSettings();
   for (const [id, def] of Object.entries(FIELDS)) write(id, def, settings[id]);
+  buildPromptEditors();
   syncLabels();
 
   for (const [id, def] of Object.entries(FIELDS)) {
@@ -50,6 +52,13 @@ async function init() {
     await refreshCacheStats();
     flash('快取已清除');
   });
+  $('resetPrompts').addEventListener('click', async () => {
+    settings.customPrompts = {};
+    await setSettings({ customPrompts: {} });
+    buildPromptEditors();
+    flash('提示詞已回復內建');
+  });
+
   $('diagnostics').addEventListener('click', () =>
     chrome.tabs.create({ url: chrome.runtime.getURL('src/diagnostics/diagnostics.html') }));
   $('reset').addEventListener('click', async () => {
@@ -86,6 +95,106 @@ function read(id, def) {
       )];
     default: return el.value;
   }
+}
+
+/* ------------------------------------------------------------ 提示詞 */
+
+/**
+ * 每則 prompt 一個編輯區。清單來自 src/ai/prompts.js 的 PROMPTS ——
+ * 新增一則 prompt 時設定頁會自動長出對應欄位，不必兩邊各改一次。
+ *
+ * 這些欄位是動態產生的，所以不用 $('id') 取值（那要求 HTML 裡先有 id）。
+ */
+function buildPromptEditors() {
+  const host = $('prompts');
+  host.replaceChildren();
+
+  for (const def of PROMPTS) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    wrap.style.gap = '6px';
+
+    const head = document.createElement('div');
+    head.className = 'row';
+    const title = document.createElement('div');
+    title.className = 'grow';
+    const name = document.createElement('div');
+    name.textContent = def.label;
+    const where = document.createElement('div');
+    where.className = 'small muted';
+    where.textContent = def.where;
+    title.append(name, where);
+
+    const revert = document.createElement('button');
+    revert.className = 'ghost';
+    revert.textContent = '回復內建';
+    head.append(title, revert);
+
+    // 框裡直接放實際在用的提示詞，改它就是改實際送出的內容
+    const box = document.createElement('textarea');
+    box.rows = 7;
+    box.spellcheck = false;
+    box.maxLength = MAX_PROMPT_LENGTH;
+    box.value = settings.customPrompts?.[def.key] ?? def.body;
+
+    const foot = document.createElement('div');
+    foot.className = 'small muted';
+
+    const refresh = () => {
+      const value = box.value.trim();
+      const parts = [];
+      if (!value) parts.push('空白，會使用內建提示詞');
+      else if (value === def.body) parts.push('與內建相同');
+      else parts.push(`已自訂 ${box.value.length} / ${MAX_PROMPT_LENGTH} 字元`);
+      // 這一行不在框裡，但每次都會接上去。不講的話使用者會自己再寫一次。
+      if (def.appendRespondIn) {
+        parts.push(`結尾自動接上「${respondInLine(previewLanguage(def.key))}」`);
+      }
+      foot.textContent = parts.join('・');
+      revert.disabled = value === def.body;
+    };
+
+    box.addEventListener('input', () => { refresh(); savePrompt(def.key, box.value, def.body); });
+    revert.addEventListener('click', () => {
+      box.value = def.body;
+      refresh();
+      savePrompt(def.key, def.body, def.body);
+    });
+
+    refresh();
+    wrap.append(head, box, foot);
+    host.appendChild(wrap);
+  }
+}
+
+/**
+ * 提示裡要顯示哪個語言。輸入框翻譯用的是它自己的目標語言，其餘用閱讀的目標語言。
+ * 這只是給使用者看的近似值，真正送出時由 planOutputLanguage() 決定。
+ */
+function previewLanguage(key) {
+  return key === 'inputRewrite' ? settings.inputTargetLanguage : settings.targetLanguage;
+}
+
+let promptTimer = null;
+function savePrompt(key, value, builtIn) {
+  const next = { ...settings.customPrompts };
+  const trimmed = value.trim();
+  // 和內建一模一樣就不必存 —— 存了只是佔 storage.sync 的額度，
+  // 而且日後內建內容更新時會被舊的複本擋住
+  if (trimmed && trimmed !== builtIn) next[key] = trimmed;
+  else delete next[key];
+  settings.customPrompts = next;
+
+  clearTimeout(promptTimer);
+  promptTimer = setTimeout(async () => {
+    try {
+      await setSettings({ customPrompts: next });
+      flash('已儲存');
+    } catch (err) {
+      // storage.sync 每個項目只有 8 KB，六則加起來是有可能撐爆的
+      flash(`儲存失敗：${err?.message || err}`);
+    }
+  }, 600);
 }
 
 let saveTimer = null;

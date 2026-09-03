@@ -70,7 +70,7 @@ export async function translateFocusedInput() {
 /** 建 session 與重建分支共用同一份設定。 */
 function sessionConfig(target) {
   return {
-    systemPrompt: inputRewriteSystemPrompt(target),
+    systemPrompt: inputRewriteSystemPrompt(target, settings.customPrompts),
     mode: 'balanced',
     outputLanguage: target,
   };

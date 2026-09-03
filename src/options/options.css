@@ -17,3 +17,7 @@ textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monosp
 .preview[data-style="blur"]:hover .tr span { filter: none; }
 
 #saved { min-height: 1.4em; text-align: right; transition: opacity .25s ease; }
+
+/* 提示詞編輯區。每則之間畫一條線，六個大文字框連在一起會看不出分界 */
+#prompts > .stack { padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+#prompts > .stack:last-child { padding-bottom: 0; border-bottom: 0; }

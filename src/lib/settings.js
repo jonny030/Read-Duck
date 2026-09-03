@@ -20,13 +20,23 @@ export const DEFAULTS = Object.freeze({
   cacheEnabled: true,
   /** 譯文字級相對原文的比例 */
   translationFontScale: 1,
+  /**
+   * 使用者自訂的 system prompt，key 對應 src/ai/prompts.js 的 PROMPTS。
+   * 沒有的 key 就用內建的那份。內容由 sanitizeCustomPrompts() 把關。
+   */
+  customPrompts: {},
 });
 
 export async function getSettings() {
   const stored = await chrome.storage.sync.get(DEFAULTS);
   // storage.sync 可能存有舊版遺留的 key，用 DEFAULTS 過濾一次
   const out = {};
-  for (const k of Object.keys(DEFAULTS)) out[k] = stored[k] ?? DEFAULTS[k];
+  for (const k of Object.keys(DEFAULTS)) {
+    const v = stored[k] ?? DEFAULTS[k];
+    // DEFAULTS 裡的陣列與物件是共用的實例，直接交出去的話呼叫端一改就污染了
+    // 預設值。複製一份再給。
+    out[k] = Array.isArray(v) ? [...v] : (v && typeof v === 'object' ? { ...v } : v);
+  }
   return out;
 }
 
