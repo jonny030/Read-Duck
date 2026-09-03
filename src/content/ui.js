@@ -220,6 +220,7 @@ export function showPanel(rect, title, { onClose, actions = [] } = {}) {
   panel.append(header, body);
   shadow.appendChild(panel);
   positionNear(panel, rect, 10);
+  makeDraggable(panel, header);
 
   const onKey = (e) => {
     if (e.key === 'Escape') { closePanel(); onClose?.(); }
@@ -375,6 +376,57 @@ export function hideToast() {
  * 把浮層放在目標矩形附近，並確保不會超出視窗。
  * 用 absolute + 頁面座標（而非 fixed），這樣頁面捲動時浮層會跟著內容走。
  */
+/**
+ * 讓面板可以拖著標題列移動。
+ *
+ * 用 pointer events 而不是 mouse events：一套就同時涵蓋滑鼠、觸控與觸控筆，
+ * 而且 setPointerCapture 讓游標移出面板（甚至移出視窗）時仍然收得到事件 ——
+ * 不必在 document 上掛全域監聽再記得拆掉。
+ *
+ * 面板是 position:absolute、座標含捲動量，所以拖曳時直接加減位移即可，
+ * 不必理會頁面捲到哪裡。
+ */
+function makeDraggable(el, handle) {
+  let startX = 0;
+  let startY = 0;
+  let originLeft = 0;
+  let originTop = 0;
+
+  handle.addEventListener('pointerdown', (e) => {
+    // 標題列上的按鈕有自己的行為，不要把點擊變成拖曳
+    if (e.target.closest('button')) return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    startX = e.clientX;
+    startY = e.clientY;
+    originLeft = parseFloat(el.style.left) || 0;
+    originTop = parseFloat(el.style.top) || 0;
+    el.dataset.dragging = '';
+    handle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  handle.addEventListener('pointermove', (e) => {
+    if (!('dragging' in el.dataset)) return;
+    const left = originLeft + (e.clientX - startX);
+    const top = originTop + (e.clientY - startY);
+    // 至少留一點在畫面內，不然拖出去就再也抓不回來
+    const margin = 40;
+    const maxLeft = window.scrollX + window.innerWidth - margin;
+    const maxTop = window.scrollY + window.innerHeight - margin;
+    el.style.left = `${Math.min(Math.max(left, window.scrollX - el.offsetWidth + margin), maxLeft)}px`;
+    el.style.top = `${Math.min(Math.max(top, window.scrollY), maxTop)}px`;
+  });
+
+  const end = (e) => {
+    if (!('dragging' in el.dataset)) return;
+    delete el.dataset.dragging;
+    handle.releasePointerCapture?.(e.pointerId);
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
 function positionNear(el, rect, gap) {
   const sx = window.scrollX, sy = window.scrollY;
   // 先量尺寸

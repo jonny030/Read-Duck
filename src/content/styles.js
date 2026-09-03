@@ -231,7 +231,17 @@ export const PANEL_CSS = `
   border-bottom: 1px solid var(--rd-border);
   font-size: 12px; font-weight: 600; color: var(--rd-muted);
   letter-spacing: .02em;
+  cursor: grab;
+  /* 拖曳時不要順手選到標題文字 */
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
 }
+.panel[data-dragging] header { cursor: grabbing; }
+/* 拖曳中連內文的選取也停掉，否則游標掃過內文會反白一整片 */
+.panel[data-dragging] .body { -webkit-user-select: none; user-select: none; }
+/* 按鈕上不要顯示成可拖曳，它們有自己的行為 */
+.panel header button { cursor: pointer; }
 .panel header .grow { flex: 1; }
 .panel header button {
   font: inherit; font-size: 12px;
