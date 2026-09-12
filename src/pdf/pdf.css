@@ -93,10 +93,13 @@ body[data-mode="side-by-side"] .page-shell:not(.page-clean) .num { display: none
 .overlay .ov {
   position: absolute;
   box-sizing: border-box;
-  padding: 0 1px;
+  /* 內距、行距、對齊、縮排、字色、字型都由程式照原文設定；這裡只是後備值 */
+  padding: 2px;
   color: #111;
   line-height: 1.25;
   overflow-wrap: break-word;
+  /* 窄欄裡的英文術語換行時用連字號斷開，右緣才不會參差 */
+  hyphens: auto;
   border-radius: 2px;
   /* 背景色由程式從畫布取樣，深色底的 PDF 才不會出現白框 */
   background: #fff;
