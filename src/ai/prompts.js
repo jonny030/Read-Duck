@@ -115,6 +115,24 @@ export const PROMPTS = Object.freeze([
     ].join('\n'),
   },
   {
+    key: 'pdfOutlineTranscribe',
+    label: 'PDF 圖形文字辨識',
+    where: 'PDF 檢視器自動辨識「畫成圖形的文字」（例如某些期刊的表格）',
+    // 和圖片辨識一樣只轉錄、不翻譯，所以不接輸出語言的指示。
+    // 編號是檢視器自己印在每一行左邊的，靠它把回答對回每一行的位置
+    appendRespondIn: false,
+    body: [
+      'This image is made of rows. Each row starts with a number in square brackets, such as [3],'
+      + ' followed by one line of text cropped from a document.',
+      'Transcribe every row verbatim.',
+      'Rules:',
+      '- Output one line per row, in the form: [number] text',
+      '- Keep each number exactly as printed. Do not skip, merge or reorder rows.',
+      '- Output only the text you can read. Do not translate it, explain it, or describe the image.',
+      '- If a row has no readable text, output the number alone, like: [3]',
+    ].join('\n'),
+  },
+  {
     key: 'inputRewrite',
     label: '輸入框翻譯',
     where: '在輸入框上按右鍵 →「翻譯這個輸入框的內容」',
@@ -163,6 +181,7 @@ export const chunkSummarySystemPrompt = (lang, custom) => buildPrompt('chunkSumm
 export const qaSystemPrompt = (lang, custom) => buildPrompt('qa', lang, custom);
 export const inputRewriteSystemPrompt = (lang, custom) => buildPrompt('inputRewrite', lang, custom);
 export const imageTranscribeSystemPrompt = (lang, custom) => buildPrompt('imageTranscribe', lang, custom);
+export const pdfOutlineTranscribeSystemPrompt = (lang, custom) => buildPrompt('pdfOutlineTranscribe', lang, custom);
 
 /**
  * 摘要的結構化輸出 schema。搭配 omitResponseConstraintInput: true 使用。
