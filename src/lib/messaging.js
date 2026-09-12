@@ -16,6 +16,8 @@ export const MSG = {
   FETCH_IMAGE:      'image:fetch',
   /** 抓不到時的後路：擷取可見畫面，再由 content script 裁出圖片那一塊 */
   CAPTURE_TAB:      'image:capture',
+  /** PDF 檢視器 -> 原本顯示那份 PDF 的分頁：請它把檔案交過來，見 content/pdf-source.js */
+  FETCH_PDF:        'pdf:fetch',
 
   // service worker -> content script
   TOGGLE:           'cmd:toggle',

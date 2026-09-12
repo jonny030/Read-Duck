@@ -6,7 +6,10 @@ import {
   translateText, checkAvailability,
   NeedsUserActivationError, TranslatorUnavailableError, destroyAll as destroyTranslators,
 } from '../ai/translator-pool.js';
-import { detectPageLanguage, detectLanguage, MIN_DETECT_LENGTH } from '../ai/detector.js';
+import {
+  detectPageLanguage, detectLanguage, MIN_DETECT_LENGTH, MIN_PAGE_SAMPLE_LENGTH,
+} from '../ai/detector.js';
+import { findEmbeddedPdf } from './pdf-source.js';
 import { sameLanguage, canonical, languageName } from '../ai/languages.js';
 import { mightAlreadyBe } from './script-detect.js';
 import { explainUnavailable, permissionsPolicyAllows } from '../ai/capability.js';
@@ -124,7 +127,7 @@ export class PageTranslator {
       const detected = await detectPageLanguage(units.map((u) => u.text));
       if (!detected) {
         if (initial) {
-          ui.showToast('無法判斷這個頁面的語言，請確認裝置端語言偵測模型已下載。');
+          this.#explainNoLanguage(units);
           return false;
         }
         return true;
@@ -173,6 +176,33 @@ export class PageTranslator {
     if (unit.text.length < MIN_DETECT_LENGTH) return true; // 太短又長得像目標語言，跳過比誤翻好
     const r = await detectLanguage(unit.text.slice(0, 300));
     return r ? sameLanguage(r.language, target) : true;
+  }
+
+  /**
+   * 判斷不出語言時，講清楚是哪一種情況。
+   *
+   * 以前一律說「請確認語言偵測模型已下載」，但最常見的原因其實是頁面上根本
+   * 沒有夠長的文字可以當樣本 —— 例如只包著一份 PDF 的外殼網頁。叫使用者去查
+   * 模型，只會讓人往完全錯誤的方向找。
+   */
+  #explainNoLanguage(units) {
+    const hasProse = units.some((u) => u.text.trim().length >= MIN_PAGE_SAMPLE_LENGTH);
+    if (hasProse) {
+      ui.showToast('無法判斷這個頁面的語言，請確認裝置端語言偵測模型已下載。');
+      return;
+    }
+    const pdf = findEmbeddedPdf();
+    if (pdf) {
+      ui.showToast('這個頁面的內容是一份嵌入的 PDF。', {
+        timeout: 10000,
+        actions: [{
+          label: '用 ReadDuck 開啟',
+          onClick: (t) => { t.close(); send(MSG.OPEN_PDF, { url: pdf }); },
+        }],
+      });
+      return;
+    }
+    ui.showToast('這個頁面沒有足夠的文字可以翻譯。');
   }
 
   /* ---------------------------------------------------------- 快取 */

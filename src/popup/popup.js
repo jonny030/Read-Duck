@@ -99,7 +99,8 @@ function bind() {
 
   $('pdf').addEventListener('click', () => {
     // 目前分頁就是 PDF 的話直接帶過去，否則開空的檢視器讓使用者拖檔案進來
-    send(MSG.OPEN_PDF, { url: isPdfUrl(tab?.url) ? tab.url : null });
+    // popup 的訊息沒有 sender.tab，分頁 id 要自己帶，檢視器才找得到來源分頁
+    send(MSG.OPEN_PDF, { url: isPdfUrl(tab?.url) ? tab.url : null, tabId: tab?.id });
     window.close();
   });
 

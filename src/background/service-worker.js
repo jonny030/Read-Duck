@@ -2,6 +2,7 @@ import { MSG, sendToTab } from '../lib/messaging.js';
 import { getSettings, DEFAULTS } from '../lib/settings.js';
 import * as cache from '../lib/cache.js';
 import { probe } from '../ai/capability.js';
+import { toBase64 } from '../lib/binary.js';
 
 /**
  * background service worker。
@@ -148,10 +149,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       await sendToTabOrExplain(tab.id, MSG.TRANSLATE_IMAGE, { srcUrl: info.srcUrl });
       break;
     case MENU.PDF_LINK:
-      openPdfViewer(info.linkUrl);
+      openPdfViewer(info.linkUrl, tab.id);
       break;
     case MENU.PDF_PAGE:
-      openPdfViewer(info.pageUrl ?? tab.url);
+      openPdfViewer(info.pageUrl ?? tab.url, tab.id);
       break;
   }
 });
@@ -184,17 +185,6 @@ async function fetchImage(url) {
   } catch (e) {
     return { error: String(e?.message || e) };
   }
-}
-
-/** 分段轉 base64：一次 apply 整個陣列會爆呼叫堆疊。 */
-function toBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  const chunk = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
 }
 
 /**
@@ -271,7 +261,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
 
     case MSG.OPEN_PDF:
-      openPdfViewer(msg.payload?.url);
+      // popup 送的訊息沒有 sender.tab，它會自己把分頁 id 放進 payload
+      openPdfViewer(msg.payload?.url, msg.payload?.tabId ?? sender.tab?.id);
       sendResponse({ ok: true });
       return false;
 
@@ -344,9 +335,21 @@ function openSidePanel(tab) {
  * 文字，所以沒辦法在上面加譯文 —— 只能另開一個用 PDF.js 自己畫的檢視器。
  * 不帶 url 就開空的檢視器，讓使用者自己拖檔案進去。
  */
-function openPdfViewer(url) {
+/**
+ * 開 ReadDuck 的 PDF 檢視器。
+ *
+ * 帶上來源分頁：檢視器會先請那個分頁把 PDF 交出來（同源、有登入狀態、可以
+ * 用瀏覽器快取），拿不到才自己去抓 —— 理由見 content/pdf-source.js。
+ */
+function openPdfViewer(url, sourceTabId) {
   const viewer = chrome.runtime.getURL('src/pdf/pdf.html');
-  chrome.tabs.create({ url: url ? `${viewer}?file=${encodeURIComponent(url)}` : viewer });
+  if (!url) {
+    chrome.tabs.create({ url: viewer });
+    return;
+  }
+  const params = new URLSearchParams({ file: url });
+  if (sourceTabId != null) params.set('tab', String(sourceTabId));
+  chrome.tabs.create({ url: `${viewer}?${params}` });
 }
 
 /* ------------------------------------------------------ 能力探測 / offscreen */

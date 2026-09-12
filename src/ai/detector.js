@@ -69,10 +69,17 @@ export async function detectLanguage(text, { minConfidence = 0.5 } = {}) {
  * 只抽樣不全掃，是因為偵測本身也要跑模型；一整頁跑下來成本不划算，
  * 而且頁面主語言用幾段有代表性的長文就夠準了。
  */
+/**
+ * 整頁語言偵測只取這個長度以上的段落當樣本 —— 短句（導覽列、按鈕）偵測不準。
+ * 頁面上一段都沒有的話，偵測失敗的原因是「沒有文字」而不是模型不在，
+ * page-translator 靠這個常數分辨兩者。
+ */
+export const MIN_PAGE_SAMPLE_LENGTH = 40;
+
 export async function detectPageLanguage(texts, { sampleSize = 8 } = {}) {
   const candidates = texts
     .map((t) => t.trim())
-    .filter((t) => t.length >= 40)
+    .filter((t) => t.length >= MIN_PAGE_SAMPLE_LENGTH)
     .sort((a, b) => b.length - a.length)
     .slice(0, sampleSize);
 

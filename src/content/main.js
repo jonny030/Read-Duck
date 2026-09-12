@@ -2,6 +2,7 @@ import { PageTranslator } from './page-translator.js';
 import * as selection from './selection.js';
 import * as inputTranslate from './input-translate.js';
 import * as imageTranslate from './image-translate.js';
+import { fetchPdfBytes, findEmbeddedPdf } from './pdf-source.js';
 import * as ui from './ui.js';
 import { extractArticle } from './collector.js';
 import { getSettings, onSettingsChanged, hostnameOf, domainListMatches } from '../lib/settings.js';
@@ -22,6 +23,8 @@ import { reset as resetDetector } from '../ai/detector.js';
 let settings = null;
 let translator = null;
 let ready = false;
+/** 這個網頁若只是包著一份 PDF 的外殼（IEEE 的 stamp.jsp），這裡是那份 PDF 的網址 */
+let embeddedPdf = null;
 
 async function boot() {
   settings = await getSettings();
@@ -54,6 +57,7 @@ async function boot() {
   inputTranslate.init(settings);
   imageTranslate.init(settings);
 
+  embeddedPdf = findEmbeddedPdf();
   if (settings.showFloatingButton) mountFab();
 
   onSettingsChanged(applySettings);
@@ -70,6 +74,15 @@ async function boot() {
 }
 
 function mountFab() {
+  // 外殼網頁的正文就是那份 PDF：鴨子直接帶過去，而不是去翻那幾行導覽列
+  if (embeddedPdf) {
+    ui.showFab({
+      title: 'ReadDuck：用可翻譯的檢視器開啟這個頁面裡的 PDF',
+      onClick: () => send(MSG.OPEN_PDF, { url: embeddedPdf }),
+      onOptions: () => send(MSG.OPEN_OPTIONS),
+    });
+    return;
+  }
   ui.showFab({
     onClick: toggle,
     onContextMenu: () => openSidePanel(),
@@ -103,6 +116,12 @@ function mountPdfFab() {
 
 /** PDF 頁面上只需要回答狀態查詢，讓 popup 知道這裡是什麼情況。 */
 function onPdfMessage(msg, _sender, sendResponse) {
+  // 檢視器請這個分頁把 PDF 交過去。這裡就是 PDF 本身所在的來源，
+  // 同源、有登入狀態，還可能直接命中剛才載入時的快取
+  if (msg?.type === MSG.FETCH_PDF) {
+    fetchPdfBytes(msg.payload?.url ?? location.href).then(sendResponse);
+    return true;
+  }
   if (msg?.type !== MSG.QUERY_STATE) return false;
   sendResponse({ ready: true, isPdf: true, enabled: false, hostname: hostnameOf(location.href) });
   return false;
@@ -174,6 +193,10 @@ function onMessage(msg, _sender, sendResponse) {
     case MSG.QUERY_STATE:
       sendResponse(pageState());
       return false;
+
+    case MSG.FETCH_PDF:
+      fetchPdfBytes(msg.payload?.url).then(sendResponse);
+      return true;
 
     case MSG.TRANSLATE_INPUT:
       inputTranslate.translateFocusedInput();
