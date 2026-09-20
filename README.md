@@ -4,6 +4,8 @@
 翻譯、解釋、摘要**全部在你自己的電腦上跑** —— 用的是瀏覽器內建的裝置端 AI，
 不需要 API key、不產生費用、看的內容不會離開這台機器。
 
+[![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=jonny030&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://buymeacoffee.com/jonny030)
+
 互動設計參考沉浸式翻譯，引擎換成瀏覽器內建的 Translator / Language Detector / Prompt API：
 
 | | Chrome | Microsoft Edge |
